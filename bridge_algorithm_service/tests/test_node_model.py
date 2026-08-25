@@ -7,6 +7,7 @@ from bridge_algorithm_service.node_model import (
     NodeModelOutOfDistribution,
     NodeRatioModelBundle,
 )
+from bridge_algorithm_service.back_half_high_tail import FIXED_RULE_ALPHA
 
 
 def _artifact(target: str, constant: float, feature_names: list[str]) -> dict:
@@ -124,8 +125,71 @@ class NodeModelTests(unittest.TestCase):
         self.assertGreaterEqual(back, 0.5)
         self.assertEqual(front_metadata["prediction_interval_90"], [0.32, 0.48000000000000004])
         self.assertEqual(back_metadata["prediction_interval_90"], [0.55, 0.75])
+        self.assertFalse(back_metadata["high_tail_mix_applied"])
+        self.assertFalse(front_metadata["low_tail_mix_applied"])
         with self.assertRaisesRegex(Exception, "unsupported outer-node design mode"):
             model.predict({}, "automatic")
+
+    def test_design_mode_back_half_mixes_yonggui_like_shrinkage_to_two_thirds(self) -> None:
+        artifact = _design_mode_artifact()
+        artifact["experts"]["back_half"]["constant"] = 0.597
+        artifact["back_half_high_tail"] = {
+            "method": "rule_floor_when_expert_below_median_by_shrink_band",
+            "rule_alpha": FIXED_RULE_ALPHA,
+            "train_median": 0.622,
+            "shrink_band": 0.02,
+            "high_tail_alpha": 0.70,
+            "high_tail_train_rows": 7,
+        }
+        model = DesignModeAlphaModel(artifact)
+
+        back, metadata = model.predict({}, "back_half")
+        front, _ = model.predict({}, "front_half")
+
+        self.assertGreaterEqual(back, FIXED_RULE_ALPHA - 1e-12)
+        self.assertTrue(metadata["high_tail_mix_applied"])
+        self.assertAlmostEqual(front, 0.4)
+        self.assertLess(front, 0.5)
+
+    def test_design_mode_front_half_does_not_mix_lanxia_like_low_tail(self) -> None:
+        artifact = _design_mode_artifact()
+        artifact["experts"]["front_half"]["constant"] = 0.427
+        artifact["front_half_low_tail"] = {
+            "method": "none_isolated_holdout_outlier",
+            "enabled": False,
+            "train_median": 0.449,
+            "low_tail_alpha": 0.30,
+            "low_tail_train_rows": 1,
+        }
+        model = DesignModeAlphaModel(artifact)
+
+        front, metadata = model.predict({}, "front_half")
+        back, _ = model.predict({}, "back_half")
+
+        self.assertAlmostEqual(front, 0.427)
+        self.assertFalse(metadata["low_tail_mix_applied"])
+        self.assertLess(front, 0.5)
+        self.assertGreater(front, 0.35)
+        self.assertAlmostEqual(back, 0.65)
+
+    def test_design_mode_uncommitted_uses_band_center_not_back_expert(self) -> None:
+        artifact = _design_mode_artifact()
+        artifact["uncommitted_alpha"] = {
+            "method": "boundary_band_center_else_ungated_expert_mix",
+            "band_center": 0.5,
+            "band_alpha": 0.5,
+            "boundary_band": 0.03,
+            "band_rows": 22,
+            "off_band_uncommitted_rows": 3,
+        }
+        model = DesignModeAlphaModel(artifact)
+
+        uncommitted, metadata = model.predict({}, "uncommitted")
+        back, _ = model.predict({}, "back_half")
+
+        self.assertAlmostEqual(uncommitted, 0.5)
+        self.assertEqual(metadata["uncommitted_predictor"], "boundary_band_center")
+        self.assertGreater(abs(back - 0.5), 0.1)
 
     def test_design_mode_model_rejects_artifact_that_failed_gate(self) -> None:
         artifact = _design_mode_artifact()

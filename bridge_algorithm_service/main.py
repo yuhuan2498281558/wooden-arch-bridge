@@ -141,13 +141,13 @@ class PredictRequest(BaseModel):
     n1: int = Field(..., ge=3, le=50)
     n2: int = Field(..., ge=3, le=50)
     rise: float | None = None
-    outer_node_structure_type: Literal["front_half", "back_half"] = "back_half"
+    outer_node_structure_type: Literal["front_half", "back_half", "uncommitted"] = "back_half"
 
 
 class ChatRequest(BaseModel):
     message: str
     history: list[dict[str, Any]] = Field(default_factory=list)
-    outer_node_structure_type: Literal["front_half", "back_half"] = "back_half"
+    outer_node_structure_type: Literal["front_half", "back_half", "uncommitted"] = "back_half"
 
 
 class VisualizeRequest(BaseModel):
@@ -171,7 +171,7 @@ class OptimizeRequest(BaseModel):
     n1: int = Field(9, ge=3, le=50)
     n2: int = Field(8, ge=3, le=50)
     rise: float | None = None
-    outer_node_structure_type: Literal["front_half", "back_half"] = "back_half"
+    outer_node_structure_type: Literal["front_half", "back_half", "uncommitted"] = "back_half"
 
 
 def _round(value: float, digits: int = 3) -> float:
@@ -253,7 +253,7 @@ def _normalize_params(raw: dict[str, Any]) -> dict[str, Any]:
         "n2": n2,
         "rise": _round(_num(rise, 0), 2) if rise not in (None, "", 0) else None,
         "outer_node_structure_type": raw.get("outer_node_structure_type")
-        if raw.get("outer_node_structure_type") in {"front_half", "back_half"}
+        if raw.get("outer_node_structure_type") in {"front_half", "back_half", "uncommitted"}
         else "back_half",
     }
 
@@ -1024,7 +1024,7 @@ def chat(req: ChatRequest) -> dict[str, Any]:
     )
     context_text = f"{prior_user_text} {req.message}".strip()
     extracted = _extract_params(context_text)
-    if extracted.get("outer_node_structure_type") not in {"front_half", "back_half"}:
+    if extracted.get("outer_node_structure_type") not in {"front_half", "back_half", "uncommitted"}:
         extracted["outer_node_structure_type"] = req.outer_node_structure_type
     # 未识别出任何关键设计参数时，明确要求补充参数，不再静默使用默认值出图。
     # span/width 必须来自显式关键词（"净跨18米"、"桥面宽4.5米"），
@@ -1330,7 +1330,9 @@ def export_excel(req: VisualizeRequest) -> StreamingResponse:
     structure_type = params.get("outer_node_structure_type")
     add_row(
         "外节点结构类型",
-        {"front_half": "前半区", "back_half": "后半区"}.get(structure_type, "未选择（使用 v6）"),
+        {"front_half": "前半区", "back_half": "后半区", "uncommitted": "未提交（边界带中心）"}.get(
+            structure_type, "未选择（边界带中心）"
+        ),
         "",
         "设计人员给定的 alpha 结构模式",
     )

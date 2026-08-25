@@ -13,6 +13,22 @@ import numpy as np
 from sklearn.exceptions import ConvergenceWarning
 from sklearn.model_selection import GroupKFold, LeaveOneGroupOut
 
+from bridge_algorithm_service.back_half_high_tail import (
+    BACK_HALF_HIGH_TAIL_ALPHA,
+    back_half_high_tail_record,
+    mix_back_half_high_tail_values,
+)
+from bridge_algorithm_service.front_half_low_tail import (
+    FRONT_HALF_LOW_TAIL_ALPHA,
+    front_half_low_tail_record,
+    mix_front_half_low_tail_values,
+)
+from bridge_algorithm_service.uncommitted_alpha import (
+    UNCOMMITTED_BAND_CENTER,
+    row_uses_uncommitted_band_predictor,
+    uncommitted_alpha_record,
+    uncommitted_band_prediction,
+)
 from ml_pipeline.prepare.symmetric_targets import collect_annotation_paths
 from ml_pipeline.train.feature_ablation import FEATURE_SETS
 from ml_pipeline.train.model_improvement import load_frozen_partition
@@ -29,9 +45,14 @@ from ml_pipeline.train.pilot import (
     metric_record,
 )
 from ml_pipeline.train.structure_gated_alpha import (
-    AMBIGUITY_BAND,
+    STRUCTURE_BOUNDARY_BAND,
     STRUCTURE_THRESHOLD,
-    alpha_structure_class,
+    UNCOMMITTED_STRUCTURE_CLASS,
+    UNCOMMITTED_STRUCTURE_MODE,
+    derived_structure_class,
+    derived_structure_mode,
+    in_structure_boundary_band,
+    left_right_structure_disagreement,
 )
 
 
@@ -53,9 +74,25 @@ def _target(rows: Iterable[dict[str, Any]]) -> np.ndarray:
     return np.asarray([float(row["design_target_alpha"]) for row in rows], dtype=float)
 
 
+def _row_left_right(row: dict[str, Any]) -> tuple[float | None, float | None]:
+    left = row.get("observed_alpha_left")
+    right = row.get("observed_alpha_right")
+    if left is None or right is None:
+        return None, None
+    return float(left), float(right)
+
+
+def _derived_mode_name(row: dict[str, Any]) -> str:
+    left, right = _row_left_right(row)
+    return derived_structure_mode(row["design_target_alpha"], left, right)
+
+
 def _classes(rows: Iterable[dict[str, Any]]) -> np.ndarray:
     return np.asarray(
-        [alpha_structure_class(row["design_target_alpha"]) for row in rows],
+        [
+            derived_structure_class(row["design_target_alpha"], *_row_left_right(row))
+            for row in rows
+        ],
         dtype=int,
     )
 
@@ -123,27 +160,70 @@ def _predict_expert(expert: dict[str, Any], rows: list[dict[str, Any]]) -> np.nd
     return np.asarray(estimator.predict(feature_matrix(rows, names)), dtype=float)
 
 
+def _ungated_expert_mix(model: dict[str, Any], rows: list[dict[str, Any]]) -> np.ndarray:
+    """Off-band uncommitted: interpolate the two half-experts without a 0.5 clip.
+
+    Do not use this for the |α-0.5|≤0.03 band — v6 and the expert average both
+    sit near the 0.62/0.43 bulk. Band rows use ``uncommitted_band_prediction``.
+    """
+    front = _predict_expert(model["experts"]["front_half"], rows)
+    front, _ = mix_front_half_low_tail_values(front, model.get("front_half_low_tail"))
+    back = _predict_expert(model["experts"]["back_half"], rows)
+    back, _ = mix_back_half_high_tail_values(back, model.get("back_half_high_tail"))
+    return 0.5 * (front + back)
+
+
+def _uncommitted_predictions(
+    model: dict[str, Any],
+    rows: list[dict[str, Any]],
+) -> np.ndarray:
+    """Band center for |α-0.5|≤0.03; otherwise ungated half-expert mix. Never v6."""
+    predictions = np.empty(len(rows), dtype=float)
+    band_alpha = uncommitted_band_prediction(model.get("uncommitted_alpha"))
+    band_mask = np.asarray(
+        [row_uses_uncommitted_band_predictor(row) for row in rows],
+        dtype=bool,
+    )
+    predictions[band_mask] = band_alpha
+    off_band = np.flatnonzero(~band_mask)
+    if len(off_band):
+        off_rows = [rows[index] for index in off_band]
+        predictions[off_band] = _ungated_expert_mix(model, off_rows)
+    return predictions
+
+
 def clip_to_design_mode(values: np.ndarray, classes: np.ndarray) -> np.ndarray:
     predictions = np.asarray(values, dtype=float)
     modes = np.asarray(classes, dtype=int)
-    if len(predictions) != len(modes) or np.any((modes < 0) | (modes > 1)):
-        raise ValueError("design modes must align with predictions and contain only 0/1")
+    if len(predictions) != len(modes) or np.any((modes < -1) | (modes > 1)):
+        raise ValueError("design modes must align with predictions and contain only -1/0/1")
     lower_open = np.nextafter(0.0, 1.0)
     front_upper = np.nextafter(STRUCTURE_THRESHOLD, 0.0)
     upper_open = np.nextafter(1.0, 0.0)
     return np.where(
         modes == 0,
         np.clip(predictions, lower_open, front_upper),
-        np.clip(predictions, STRUCTURE_THRESHOLD, upper_open),
+        np.where(
+            modes == 1,
+            np.clip(predictions, STRUCTURE_THRESHOLD, upper_open),
+            np.clip(predictions, lower_open, upper_open),
+        ),
     )
 
 
 def _normalize_modes(modes: Iterable[str | int], expected_length: int) -> np.ndarray:
-    mapping = {"front_half": 0, "back_half": 1, 0: 0, 1: 1}
+    mapping = {
+        "front_half": 0,
+        "back_half": 1,
+        UNCOMMITTED_STRUCTURE_MODE: UNCOMMITTED_STRUCTURE_CLASS,
+        0: 0,
+        1: 1,
+        -1: UNCOMMITTED_STRUCTURE_CLASS,
+    }
     try:
         normalized = np.asarray([mapping[value] for value in modes], dtype=int)
     except (KeyError, TypeError) as exc:
-        raise ValueError("design mode must be front_half/back_half or 0/1") from exc
+        raise ValueError("design mode must be front_half/back_half/uncommitted or 0/1/-1") from exc
     if len(normalized) != expected_length:
         raise ValueError("design modes must align with rows")
     return normalized
@@ -154,16 +234,44 @@ def fit_design_mode_model(
     selected_specs: dict[str, dict[str, Any]],
 ) -> dict[str, Any]:
     classes = _classes(rows)
-    if set(classes.tolist()) != {0, 1}:
+    committed = classes >= 0
+    if set(classes[committed].tolist()) != {0, 1}:
         raise ValueError("design-mode training requires both front- and back-half rows")
     experts: dict[str, dict[str, Any]] = {}
+    mode_rows_by_name: dict[str, list[dict[str, Any]]] = {}
     for class_index, mode_name in enumerate(MODE_NAMES):
         mode_rows = [row for index, row in enumerate(rows) if classes[index] == class_index]
+        mode_rows_by_name[mode_name] = mode_rows
         experts[mode_name] = _fit_expert(mode_rows, selected_specs[mode_name])
+    front_targets = _target(mode_rows_by_name["front_half"])
+    back_targets = _target(mode_rows_by_name["back_half"])
+    uncommitted_rows = [row for index, row in enumerate(rows) if classes[index] < 0]
+    band_rows = [
+        row for row in uncommitted_rows if row_uses_uncommitted_band_predictor(row)
+    ]
+    band_median = (
+        float(np.median(_target(band_rows)))
+        if band_rows
+        else float(UNCOMMITTED_BAND_CENTER)
+    )
     return {
         "experts": experts,
         "structure_threshold": STRUCTURE_THRESHOLD,
+        "structure_boundary_band": STRUCTURE_BOUNDARY_BAND,
         "mode_required": True,
+        "back_half_high_tail": back_half_high_tail_record(
+            float(np.median(back_targets)),
+            int(np.sum(back_targets >= BACK_HALF_HIGH_TAIL_ALPHA)),
+        ),
+        "front_half_low_tail": front_half_low_tail_record(
+            float(np.median(front_targets)),
+            int(np.sum(front_targets < FRONT_HALF_LOW_TAIL_ALPHA)),
+        ),
+        "uncommitted_alpha": uncommitted_alpha_record(
+            band_median,
+            len(band_rows),
+            len(uncommitted_rows) - len(band_rows),
+        ),
     }
 
 
@@ -171,14 +279,40 @@ def predict_design_mode_model(
     model: dict[str, Any],
     rows: list[dict[str, Any]],
     modes: Iterable[str | int],
+    *,
+    ungated_fallback: np.ndarray | None = None,
 ) -> np.ndarray:
+    """Predict committed halves with v9 experts; uncommitted never uses v6.
+
+    ``ungated_fallback`` is ignored. It used to inject v6 for uncommitted
+    rows; that predicted ~0.622 for 远济 (true 0.503). Band rows now use
+    the clamped band median / 0.5; off-band uncommitted rows interpolate
+    the two half-experts without a 0.5 clip.
+    """
+    del ungated_fallback
     classes = _normalize_modes(modes, len(rows))
     predictions = np.zeros(len(rows), dtype=float)
     for class_index, mode_name in enumerate(MODE_NAMES):
         selected = np.flatnonzero(classes == class_index)
         if len(selected):
             mode_rows = [rows[index] for index in selected]
-            predictions[selected] = _predict_expert(model["experts"][mode_name], mode_rows)
+            raw = _predict_expert(model["experts"][mode_name], mode_rows)
+            if mode_name == "back_half":
+                raw, _ = mix_back_half_high_tail_values(
+                    raw,
+                    model.get("back_half_high_tail"),
+                )
+            elif mode_name == "front_half":
+                # Documented no-op: 岚下 is an isolated low-tail holdout.
+                raw, _ = mix_front_half_low_tail_values(
+                    raw,
+                    model.get("front_half_low_tail"),
+                )
+            predictions[selected] = raw
+    uncommitted = np.flatnonzero(classes < 0)
+    if len(uncommitted):
+        uncommitted_rows = [rows[index] for index in uncommitted]
+        predictions[uncommitted] = _uncommitted_predictions(model, uncommitted_rows)
     return clip_to_design_mode(predictions, classes)
 
 
@@ -199,19 +333,25 @@ def cross_validated_predictions(
     selected_specs: dict[str, dict[str, Any]],
     *,
     splitter: GroupKFold | LeaveOneGroupOut,
+    ungated_fallback: np.ndarray | None = None,
 ) -> tuple[np.ndarray, list[dict[str, Any]]]:
     classes = _classes(rows)
     predictions = np.full(len(rows), np.nan, dtype=float)
     fold_audit: list[dict[str, Any]] = []
     groups = np.asarray([row["split_group_key"] for row in rows])
+    fallback = None if ungated_fallback is None else np.asarray(ungated_fallback, dtype=float)
+    if fallback is not None and len(fallback) != len(rows):
+        raise ValueError("ungated fallback must align with rows")
     for fold_index, (train_index, test_index) in enumerate(_split_indices(rows, splitter), start=1):
         train_rows = [rows[index] for index in train_index]
         test_rows = [rows[index] for index in test_index]
         model = fit_design_mode_model(train_rows, selected_specs)
+        fold_fallback = None if fallback is None else fallback[test_index]
         predictions[test_index] = predict_design_mode_model(
             model,
             test_rows,
             classes[test_index],
+            ungated_fallback=fold_fallback,
         )
         fold_audit.append({
             "fold": fold_index,
@@ -220,8 +360,10 @@ def cross_validated_predictions(
             "group_overlap": 0,
             "training_front_half_rows": int(np.sum(classes[train_index] == 0)),
             "training_back_half_rows": int(np.sum(classes[train_index] == 1)),
+            "training_uncommitted_rows": int(np.sum(classes[train_index] < 0)),
             "validation_front_half_rows": int(np.sum(classes[test_index] == 0)),
             "validation_back_half_rows": int(np.sum(classes[test_index] == 1)),
+            "validation_uncommitted_rows": int(np.sum(classes[test_index] < 0)),
         })
     if not np.all(np.isfinite(predictions)):
         raise RuntimeError("cross-validation did not produce complete finite predictions")
@@ -254,6 +396,8 @@ def _screen_candidate(
             )
     except (ValueError, FloatingPointError) as exc:
         return {**spec, "valid": False, "failure": str(exc)}
+    if not len(selected_indices):
+        return {**spec, "valid": False, "failure": "no_committed_mode_rows"}
     if not np.all(np.isfinite(predictions[selected_indices])):
         return {**spec, "valid": False, "failure": "incomplete_predictions"}
     mode_rows = [rows[index] for index in selected_indices]
@@ -326,6 +470,8 @@ def _metrics(
     by_mode: dict[str, dict[str, Any]] = {}
     for mode_index, mode_name in enumerate(MODE_NAMES):
         selected = classes == mode_index
+        if not np.any(selected):
+            raise ValueError(f"metrics require committed {mode_name} rows")
         mode_rows = [row for index, row in enumerate(rows) if selected[index]]
         by_mode[mode_name] = metric_record(
             observed[selected],
@@ -338,6 +484,7 @@ def _metrics(
         by_mode[mode_name]["rows"] = int(np.sum(selected))
         by_mode[mode_name]["groups"] = len({row["split_group_key"] for row in mode_rows})
     result["by_mode"] = by_mode
+    result["uncommitted_rows"] = int(np.sum(classes < 0))
     result["mode_macro_bridge_mae"] = float(np.mean([
         by_mode[name]["bridge_macro_mae"] for name in MODE_NAMES
     ]))
@@ -431,10 +578,12 @@ def _passes_integration_gate(
 
 def _row_flags(row: dict[str, Any]) -> tuple[bool, bool]:
     alpha = float(row["design_target_alpha"])
-    left = float(row["observed_alpha_left"])
-    right = float(row["observed_alpha_right"])
-    boundary = abs(alpha - STRUCTURE_THRESHOLD) <= AMBIGUITY_BAND
-    disagreement = (left >= STRUCTURE_THRESHOLD) != (right >= STRUCTURE_THRESHOLD)
+    left, right = _row_left_right(row)
+    boundary = in_structure_boundary_band(alpha)
+    if left is None or right is None:
+        disagreement = False
+    else:
+        disagreement = left_right_structure_disagreement(left, right)
     return boundary, disagreement
 
 
@@ -513,12 +662,30 @@ def _distribution(rows: list[dict[str, Any]]) -> dict[str, Any]:
         "groups": len({row["split_group_key"] for row in rows}),
         "front_half_rows": int(np.sum(classes == 0)),
         "back_half_rows": int(np.sum(classes == 1)),
+        "uncommitted_rows": int(np.sum(classes < 0)),
+        "boundary_band": STRUCTURE_BOUNDARY_BAND,
+        "within_boundary_band_rows": sum(boundary for boundary, _ in flags),
         "within_0.03_of_threshold": sum(boundary for boundary, _ in flags),
         "left_right_half_disagreement_rows": sum(disagreement for _, disagreement in flags),
         "threshold": STRUCTURE_THRESHOLD,
         "historical_mode_definition": {
-            "front_half": "design_target_alpha < 0.5",
-            "back_half": "design_target_alpha >= 0.5",
+            "front_half": (
+                f"both observed sides clearly below {STRUCTURE_THRESHOLD:g} - "
+                f"{STRUCTURE_BOUNDARY_BAND:g}"
+            ),
+            "back_half": (
+                f"both observed sides clearly above {STRUCTURE_THRESHOLD:g} + "
+                f"{STRUCTURE_BOUNDARY_BAND:g}"
+            ),
+            "uncommitted": (
+                f"|mean α - {STRUCTURE_THRESHOLD:g}| <= {STRUCTURE_BOUNDARY_BAND:g} "
+                "or the two sides are not both clearly the same half"
+            ),
+            "note": (
+                "远济 holdout mean α=0.503 (L/R 0.506/0.500) and 22/103 samples "
+                f"with |α-0.5| <= {STRUCTURE_BOUNDARY_BAND:g} must not be labeled back_half "
+                "by a knife-edge at 0.5."
+            ),
         },
     }
 
@@ -529,7 +696,6 @@ def _prediction_rows(
     baselines: dict[str, np.ndarray],
 ) -> list[dict[str, Any]]:
     observed = _target(rows)
-    classes = _classes(rows)
     output: list[dict[str, Any]] = []
     for index, row in enumerate(rows):
         boundary, disagreement = _row_flags(row)
@@ -540,7 +706,7 @@ def _prediction_rows(
             "split_group_key": row["split_group_key"],
             "span_m": row["span_m"],
             "observed_alpha": observed[index],
-            "derived_design_mode": MODE_NAMES[classes[index]],
+            "derived_design_mode": _derived_mode_name(row),
             "within_boundary_band": boundary,
             "left_right_half_disagreement": disagreement,
             "predicted_alpha": candidate[index],
@@ -576,10 +742,12 @@ def _report(
         "",
         "## 研究口径",
         "",
-        "- 历史前/后半区由 `design_target_alpha < 0.5` / `>= 0.5` 派生，不声称为独立专家标注。",
-        "- 在线使用前提是设计人员预先给定结构模式；本实验不运行自动分类器。",
-        f"- 共 {distribution['rows']} 条：前半区 {distribution['front_half_rows']} 条，后半区 {distribution['back_half_rows']} 条。",
-        f"- 边界 ±0.03 有 {distribution['within_0.03_of_threshold']} 条；左右跨区有 {distribution['left_right_half_disagreement_rows']} 条。",
+        f"- 历史前/后半区只在两侧都明显离开 0.5±{STRUCTURE_BOUNDARY_BAND:g} 时派生；贴边样本标为 uncommitted，不因均值 ≥0.5 就切到后半区。依据：远济 holdout 均值 0.503（左右 0.506/0.500）及 22/103 条 |α-0.5|≤{STRUCTURE_BOUNDARY_BAND:g}。",
+        "- 在线使用前提仍是设计人员预先给定结构模式；本实验不运行自动分类器。未提交贴边样本不再走 v6 主体连续预测（远济 0.503 曾被预测成 0.622）；边界带用夹在 ±0.03 内的训练中位数/0.5，带外未提交样本对两个半区专家做未截断插值。不把 Ridge 专家换成别的学习器。",
+        "- 已提交后半区内：若专家相对训练中位数明显向下收缩（咏归式 ~0.597 vs 中位数 ~0.622），则与 2/3 规则取较高值。α≥0.70 仅 7 条，不够拟合第二套专家；北涧/田地专家输出落在 0.62–0.64 主体内，保守混合不会把它们抬到 0.75。",
+        "- 前半区岚下（2026-08-25 重标 L/R 0.277/0.187、均值 0.232、净跨 15.8 m）是 103 条中唯一最低点；v9 前半区专家约 0.427，相对中位数约 0.449 仍落在主体。照搬咏归 0.02 触发会把约 0.45 的前半区主体拖向 0.23，故不混合、不删样本、不换 Ridge。",
+        f"- 共 {distribution['rows']} 条：前半区 {distribution['front_half_rows']} 条，后半区 {distribution['back_half_rows']} 条，未提交 {distribution['uncommitted_rows']} 条。",
+        f"- 边界 ±{STRUCTURE_BOUNDARY_BAND:g} 有 {distribution['within_boundary_band_rows']} 条；左右两侧都明显相反半区才计结构分歧，现有 {distribution['left_right_half_disagreement_rows']} 条。",
         "",
         "## 模型选择",
         "",
@@ -641,11 +809,6 @@ def run_design_mode_alpha(
     development, holdout = load_frozen_partition(accepted, partition_file)
 
     selected_specs, screening_records = _screen_specs(development)
-    development_prediction, fold_audit = cross_validated_predictions(
-        development,
-        selected_specs,
-        splitter=LeaveOneGroupOut(),
-    )
     median_specs = {
         mode_name: {
             "model_name": "median",
@@ -655,15 +818,22 @@ def run_design_mode_alpha(
         }
         for mode_name in MODE_NAMES
     }
-    development_median, _ = cross_validated_predictions(
-        development,
-        median_specs,
-        splitter=LeaveOneGroupOut(),
-    )
     development_v6 = _load_ordered_predictions(
         baseline_dir / "development_selected_oof.csv",
         development,
         "predicted_alpha",
+    )
+    development_prediction, fold_audit = cross_validated_predictions(
+        development,
+        selected_specs,
+        splitter=LeaveOneGroupOut(),
+        ungated_fallback=development_v6,
+    )
+    development_median, _ = cross_validated_predictions(
+        development,
+        median_specs,
+        splitter=LeaveOneGroupOut(),
+        ungated_fallback=development_v6,
     )
     development_baseline_predictions = _baseline_predictions(
         development,
@@ -688,21 +858,23 @@ def run_design_mode_alpha(
     )
 
     development_model = fit_design_mode_model(development, selected_specs)
+    holdout_v6 = _load_ordered_predictions(
+        baseline_dir / "independent_holdout_predictions.csv",
+        holdout,
+        "predicted_alpha",
+    )
     holdout_prediction = predict_design_mode_model(
         development_model,
         holdout,
         _classes(holdout),
+        ungated_fallback=holdout_v6,
     )
     development_median_model = fit_design_mode_model(development, median_specs)
     holdout_median = predict_design_mode_model(
         development_median_model,
         holdout,
         _classes(holdout),
-    )
-    holdout_v6 = _load_ordered_predictions(
-        baseline_dir / "independent_holdout_predictions.csv",
-        holdout,
-        "predicted_alpha",
+        ungated_fallback=holdout_v6,
     )
     holdout_baseline_predictions = _baseline_predictions(holdout, holdout_v6, holdout_median)
     holdout_metrics = _metrics(
@@ -759,7 +931,7 @@ def run_design_mode_alpha(
         "trained_at": trained_at,
         "target": "alpha",
         "target_column": "design_target_alpha",
-        "historical_mode_source": "derived_from_design_target_alpha_threshold",
+        "historical_mode_source": "derived_from_design_target_alpha_with_boundary_band",
         "deployment_mode_source_required": "designer_selected",
         "training_rows": len(accepted),
         "training_groups": len({row["split_group_key"] for row in accepted}),
@@ -795,8 +967,14 @@ def run_design_mode_alpha(
             "split_by": "split_group_key",
             "score_by": "bridge_key and equal-weight design-mode macro",
             "holdout_used_for_selection": False,
-            "historical_mode_source": "design_target_alpha threshold at 0.5",
+            "historical_mode_source": (
+                f"committed halves require both sides clearly off 0.5±{STRUCTURE_BOUNDARY_BAND:g}; "
+                "uncommitted band rows use clamped band median / 0.5, not v6"
+            ),
             "deployment_contract": "designer supplies front_half/back_half before prediction",
+            "back_half_high_tail": full_model.get("back_half_high_tail"),
+            "front_half_low_tail": full_model.get("front_half_low_tail"),
+            "uncommitted_alpha": full_model.get("uncommitted_alpha"),
         },
         "integration_gate_passed": gate_passed,
         "integration_gate_reasons": gate_reasons,

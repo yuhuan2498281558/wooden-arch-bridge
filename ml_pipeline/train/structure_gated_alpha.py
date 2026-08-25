@@ -33,7 +33,14 @@ from ml_pipeline.train.pilot import (
 ARTIFACT_VERSION = "five-miao-node-pilot-v8-structure-gated-alpha"
 ARTIFACT_STATUS = "research_structure_gate_not_for_deployment"
 STRUCTURE_THRESHOLD = 0.5
+# Half-width around 0.5 that is not a committed front/back structure type.
+# Measured on 103 JSON annotations: 22 samples have |α-0.5| < 0.03; 远济
+# holdout mean α=0.503 (L/R 0.506/0.500, symmetry 0.006) was a false
+# back_half split under a knife-edge at 0.5. Do not magic-number this band.
 AMBIGUITY_BAND = 0.03
+STRUCTURE_BOUNDARY_BAND = AMBIGUITY_BAND
+UNCOMMITTED_STRUCTURE_MODE = "uncommitted"
+UNCOMMITTED_STRUCTURE_CLASS = -1
 GATE_FEATURE_SETS = (
     "span_only",
     "span_rise_ratio",
@@ -54,11 +61,141 @@ EXPERT_RECIPES: tuple[tuple[str, float | None], ...] = (
 
 
 def alpha_structure_class(alpha: float, threshold: float = STRUCTURE_THRESHOLD) -> int:
-    """Return 0 for the front half and 1 for the back half of A-B."""
+    """Geometric half of A-B: 0 if alpha < 0.5 else 1.
+
+    This is the clip bound for a *committed* designer-selected half, not the
+    automatic derived-mode labeler. Use :func:`derived_structure_mode` to
+    decide whether a historical sample may be assigned front_half/back_half.
+    """
     value = float(alpha)
     if not np.isfinite(value):
         raise ValueError("alpha must be finite")
     return int(value >= float(threshold))
+
+
+def in_structure_boundary_band(
+    alpha: float,
+    *,
+    threshold: float = STRUCTURE_THRESHOLD,
+    band: float = STRUCTURE_BOUNDARY_BAND,
+) -> bool:
+    """Return True when |alpha - 0.5| is inside the documented boundary band."""
+    value = float(alpha)
+    if not np.isfinite(value):
+        raise ValueError("alpha must be finite")
+    return abs(value - float(threshold)) <= float(band)
+
+
+def clearly_front_structure_side(
+    alpha: float,
+    *,
+    threshold: float = STRUCTURE_THRESHOLD,
+    band: float = STRUCTURE_BOUNDARY_BAND,
+) -> bool:
+    """True when alpha is clearly in the front half, not merely < 0.5."""
+    value = float(alpha)
+    if not np.isfinite(value):
+        raise ValueError("alpha must be finite")
+    return value < float(threshold) - float(band)
+
+
+def clearly_back_structure_side(
+    alpha: float,
+    *,
+    threshold: float = STRUCTURE_THRESHOLD,
+    band: float = STRUCTURE_BOUNDARY_BAND,
+) -> bool:
+    """True when alpha is clearly in the back half, not merely >= 0.5."""
+    value = float(alpha)
+    if not np.isfinite(value):
+        raise ValueError("alpha must be finite")
+    return value > float(threshold) + float(band)
+
+
+def derived_structure_mode(
+    mean_alpha: float,
+    left_alpha: float | None = None,
+    right_alpha: float | None = None,
+    *,
+    threshold: float = STRUCTURE_THRESHOLD,
+    band: float = STRUCTURE_BOUNDARY_BAND,
+) -> str:
+    """Commit front_half/back_half only when the sample is clearly off 0.5.
+
+    Far from 0.5 the geometric split is unchanged: front_half if alpha < 0.5,
+    back_half if alpha >= 0.5. Inside ``STRUCTURE_BOUNDARY_BAND`` (±0.03), do
+    not assign back_half just because mean alpha >= 0.5.
+
+    When left and right observations are supplied, both sides must be clearly
+    on the same half before a mode is committed. Tiny L/R straddles of 0.5
+    (远济 0.506/0.500) are uncommitted, not mixed structure types.
+    """
+    mean = float(mean_alpha)
+    if not np.isfinite(mean):
+        raise ValueError("alpha must be finite")
+    if left_alpha is None or right_alpha is None:
+        if in_structure_boundary_band(mean, threshold=threshold, band=band):
+            return UNCOMMITTED_STRUCTURE_MODE
+        return "back_half" if mean >= float(threshold) else "front_half"
+    left = float(left_alpha)
+    right = float(right_alpha)
+    if not np.isfinite(left) or not np.isfinite(right):
+        raise ValueError("alpha must be finite")
+    left_front = clearly_front_structure_side(left, threshold=threshold, band=band)
+    right_front = clearly_front_structure_side(right, threshold=threshold, band=band)
+    left_back = clearly_back_structure_side(left, threshold=threshold, band=band)
+    right_back = clearly_back_structure_side(right, threshold=threshold, band=band)
+    if left_front and right_front:
+        return "front_half"
+    if left_back and right_back:
+        return "back_half"
+    return UNCOMMITTED_STRUCTURE_MODE
+
+
+def derived_structure_class(
+    mean_alpha: float,
+    left_alpha: float | None = None,
+    right_alpha: float | None = None,
+    *,
+    threshold: float = STRUCTURE_THRESHOLD,
+    band: float = STRUCTURE_BOUNDARY_BAND,
+) -> int:
+    """Return 0/1 for a committed half, or -1 when the sample is uncommitted."""
+    mode = derived_structure_mode(
+        mean_alpha,
+        left_alpha,
+        right_alpha,
+        threshold=threshold,
+        band=band,
+    )
+    if mode == "front_half":
+        return 0
+    if mode == "back_half":
+        return 1
+    return UNCOMMITTED_STRUCTURE_CLASS
+
+
+def left_right_structure_disagreement(
+    left_alpha: float,
+    right_alpha: float,
+    *,
+    threshold: float = STRUCTURE_THRESHOLD,
+    band: float = STRUCTURE_BOUNDARY_BAND,
+) -> bool:
+    """True only when the two sides are clearly opposite structure types.
+
+    A ~0.006 straddle of 0.5 is measurement noise around the boundary, not
+    one-side-front / one-side-back mixed construction.
+    """
+    left = float(left_alpha)
+    right = float(right_alpha)
+    if not np.isfinite(left) or not np.isfinite(right):
+        raise ValueError("alpha must be finite")
+    left_front = clearly_front_structure_side(left, threshold=threshold, band=band)
+    right_front = clearly_front_structure_side(right, threshold=threshold, band=band)
+    left_back = clearly_back_structure_side(left, threshold=threshold, band=band)
+    right_back = clearly_back_structure_side(right, threshold=threshold, band=band)
+    return (left_front and right_back) or (left_back and right_front)
 
 
 def _target(rows: Iterable[dict[str, Any]]) -> np.ndarray:
@@ -367,12 +504,20 @@ def _distribution(rows: list[dict[str, Any]]) -> dict[str, Any]:
         "definition": {
             "front_half": "design_target_alpha < 0.5",
             "back_half": "design_target_alpha >= 0.5",
+            "disagreement": (
+                "both sides clearly opposite halves; |α-0.5| <= "
+                f"{STRUCTURE_BOUNDARY_BAND:g} is not a mixed structure type"
+            ),
         },
         "rows": len(rows),
         "front_half_rows": int(np.sum(classes == 0)),
         "back_half_rows": int(np.sum(classes == 1)),
-        "within_0.03_of_threshold": int(np.sum(np.abs(alpha - STRUCTURE_THRESHOLD) <= AMBIGUITY_BAND)),
-        "left_right_half_disagreement_rows": int(np.sum((left >= STRUCTURE_THRESHOLD) != (right >= STRUCTURE_THRESHOLD))),
+        "boundary_band": STRUCTURE_BOUNDARY_BAND,
+        "within_0.03_of_threshold": int(np.sum(np.abs(alpha - STRUCTURE_THRESHOLD) <= STRUCTURE_BOUNDARY_BAND)),
+        "left_right_half_disagreement_rows": int(sum(
+            left_right_structure_disagreement(left_value, right_value)
+            for left_value, right_value in zip(left, right)
+        )),
         "alpha_quantiles": {
             str(quantile): float(np.quantile(alpha, quantile))
             for quantile in (0.0, 0.1, 0.25, 0.5, 0.75, 0.9, 1.0)
@@ -402,8 +547,8 @@ def _report(
         "",
         "## 结构定义与样本",
         "",
-        f"- 前半区：`alpha < 0.5`，{distribution['front_half_rows']} 条；后半区：`alpha >= 0.5`，{distribution['back_half_rows']} 条。",
-        f"- 阈值前后 ±0.03 内有 {distribution['within_0.03_of_threshold']} 条；左右观测跨越不同半区有 {distribution['left_right_half_disagreement_rows']} 条。",
+        f"- 前半区：`alpha < 0.5`，{distribution['front_half_rows']} 条；后半区：`alpha >= 0.5`，{distribution['back_half_rows']} 条（v8 自动门控训练标签仍用几何 0.5 切分）。",
+        f"- 边界 ±{STRUCTURE_BOUNDARY_BAND:g} 有 {distribution['within_0.03_of_threshold']} 条；左右两侧都明显落在相反半区才计为结构分歧，现有 {distribution['left_right_half_disagreement_rows']} 条。",
         "- 分类标签只用于训练；自动预测时门控模型不能读取真实 alpha。",
         "",
         "## 选择结果",

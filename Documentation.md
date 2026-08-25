@@ -128,7 +128,7 @@ python -m ml_pipeline.train.design_mode_alpha `
   --baseline-dir <v6结果目录>
 ```
 
-v9 不新增人工重标，历史类型按 `design_target_alpha=0.5` 派生；在线由设计人员显式选择 `front_half/back_half`。开发集 81 条中前半区 28 条、后半区 53 条，条件双专家桥级宏 MAE `0.05296`、模式宏 MAE `0.05163`、q90 `0.10638`；内部留出桥级宏 MAE `0.06045`。相对分区中位数的改善较小，且排除边界或左右跨区样本后未稳定达到 `0.002` 门槛，因此产物状态保持 `research_designer_mode_not_for_deployment`，只允许受控 Pilot 使用。
+v9 不新增人工重标。贴边（远济 0.503 / 0.506/0.500）为 `uncommitted`：预测用带中心（夹在 0.5±0.03），不用 v6 主体（本地复跑曾把远济打成 0.622）。已提交后半区咏归式与 2/3 取较高值；岚下低尾不混合。产物仍为 `research_designer_mode_not_for_deployment`。云端无 JSON；本地复跑到新空目录后看留出 CSV 的远济（应接近 0.5）、咏归和岚下行。
 
 v10 显式模式部分共享实验使用 `ml_pipeline.train.partial_pooling_alpha`：冻结 v5 分区，比较分区中位数、共享跨径斜率、受惩罚的模式斜率差和 v9 独立专家。开发集 LOGO 的模式宏 MAE 分别为 `0.05459/0.05166/0.05166/0.05163`，q90 分别为 `0.11002/0.10135/0.10146/0.10638`。部分共享模型选择 `shared_penalty=10`、`interaction_penalty=1000`，表明现有样本不支持稳定的模式特异斜率；按容差优先选择更简单的共享斜率 M1，但未达到相对 v9 的 `0.002` 替换门槛。历史留出 M1 模式宏 MAE 为 `0.05929`，因该留出已反复查看，仅作描述。v10 不生成部署产物，线上 v9 和 beta 均保持不变。
 
@@ -189,16 +189,10 @@ docker compose -f docker-compose.bridge.yml up --build
 - `REDIS_URL` 不得自带 `/db`；由 `django_redis`/Celery 配置分别追加缓存库和 broker 库，密码必须 `urllib.parse.quote`。
 - `bridge-celery` 需要 `C_FORCE_ROOT=true`（编排已配置），并显式安装 `django-celery-results`。
 
-
 ## 已知环境问题
 
-- 工作区当前存在大量未提交和未跟踪改动，处理任务时必须避免覆盖无关修改。
-- 初始化项目记忆的模板脚本在当前 Windows 控制台产生过乱码；五个文件已改写为 UTF-8，后续应继续用 UTF-8 编辑。
-- Pilot 结果目录要求为空，重复训练应使用新版本目录，避免覆盖可追溯产物。
+- 工作区常有未提交改动，避免覆盖无关修改。记忆文件保持 UTF-8。Pilot 结果目录必须为空，重复训练用新版本目录。
 
 ## 交付文档
 
-- 推荐交付报告（精排版）：`docs/delivery/中国木拱廊桥智能设计系统_系统技术与使用说明_V1.1_精排版.docx`。
-- V1.0 初版保留用于版式对照，不作为当前推荐交付版本。
-- 可维护源稿：`docs/delivery/wood-arch-bridge-system-report-current.md`。
-- 可维护源稿已经更新为导师模型主链口径；精排 Word 仍需在下一版交付报告中同步。节点 Pilot、未标定寿命参数和待配置 BIMFACE 能力继续按边界项说明。
+- 推荐交付：`docs/delivery/中国木拱廊桥智能设计系统_系统技术与使用说明_V1.1_精排版.docx`；V1.0 仅作版式对照。可维护源稿 `docs/delivery/wood-arch-bridge-system-report-current.md` 已是导师模型主链口径，精排 Word 待下一版同步。节点 Pilot、未标定寿命参数和待配置 BIMFACE 能力继续按边界项说明。

@@ -11,6 +11,9 @@ import joblib
 import numpy as np
 
 from .node_geometry import DEFAULT_ALPHA, DEFAULT_BETA, ratio_warnings
+from .back_half_high_tail import mix_back_half_high_tail_alpha
+from .front_half_low_tail import mix_front_half_low_tail_alpha
+from .uncommitted_alpha import UNCOMMITTED_BOUNDARY_BAND, uncommitted_band_prediction
 
 
 MODEL_ENABLE_ENV = "BRIDGE_NODE_MODEL_ENABLED"
@@ -19,6 +22,8 @@ DESIGN_MODE_MODEL_ENABLE_ENV = "BRIDGE_NODE_DESIGN_MODE_MODEL_ENABLED"
 DESIGN_MODE_MODEL_DIR_ENV = "BRIDGE_NODE_DESIGN_MODE_MODEL_DIR"
 DESIGN_MODE_MODEL_FILE = "alpha_design_mode_model.joblib"
 SUPPORTED_DESIGN_MODES = {"front_half", "back_half"}
+UNCOMMITTED_DESIGN_MODE = "uncommitted"
+ALLOWED_DESIGN_MODES = SUPPORTED_DESIGN_MODES | {UNCOMMITTED_DESIGN_MODE}
 SUPPORTED_FEATURES = {
     "span_m",
     "three_miao_rise_span_ratio",
@@ -236,8 +241,30 @@ class DesignModeAlphaModel:
         return cls(joblib.load(path))
 
     def predict(self, feature_values: Mapping[str, float], design_mode: str) -> tuple[float, dict[str, Any]]:
-        if design_mode not in SUPPORTED_DESIGN_MODES:
+        if design_mode not in ALLOWED_DESIGN_MODES:
             raise NodeModelError(f"unsupported outer-node design mode: {design_mode}")
+        if design_mode == UNCOMMITTED_DESIGN_MODE:
+            prediction = uncommitted_band_prediction(self.artifact.get("uncommitted_alpha"))
+            lower = math.nextafter(0.0, 1.0)
+            upper = math.nextafter(1.0, 0.0)
+            prediction = float(np.clip(prediction, lower, upper))
+            return prediction, {
+                "model_name": "uncommitted_band_center",
+                "feature_set": "none",
+                "feature_names": [],
+                "prediction": prediction,
+                "high_tail_mix_applied": False,
+                "low_tail_mix_applied": False,
+                "uncommitted_predictor": "boundary_band_center",
+                "prediction_interval_90": [
+                    max(lower, prediction - UNCOMMITTED_BOUNDARY_BAND),
+                    min(upper, prediction + UNCOMMITTED_BOUNDARY_BAND),
+                ],
+                "local_domain": {"within_local_domain": True},
+                "within_local_domain": True,
+                "model_warnings": [],
+            }
+
         expert = self.experts[design_mode]
         feature_names = tuple(str(name) for name in expert.get("feature_names", []))
         if any(name not in SUPPORTED_FEATURES for name in feature_names):
@@ -272,6 +299,18 @@ class DesignModeAlphaModel:
             prediction = float(constant)
         else:
             prediction = float(estimator.predict(values)[0])
+        high_tail_applied = False
+        low_tail_applied = False
+        if design_mode == "back_half":
+            prediction, high_tail_applied = mix_back_half_high_tail_alpha(
+                prediction,
+                self.artifact.get("back_half_high_tail"),
+            )
+        elif design_mode == "front_half":
+            prediction, low_tail_applied = mix_front_half_low_tail_alpha(
+                prediction,
+                self.artifact.get("front_half_low_tail"),
+            )
         output_bounds = expert.get("output_bounds")
         if not isinstance(output_bounds, (list, tuple)) or len(output_bounds) != 2:
             raise NodeModelError("design-mode expert has invalid output bounds")
@@ -297,6 +336,8 @@ class DesignModeAlphaModel:
             "feature_set": expert.get("feature_set"),
             "feature_names": list(feature_names),
             "prediction": prediction,
+            "high_tail_mix_applied": high_tail_applied,
+            "low_tail_mix_applied": low_tail_applied,
             "prediction_interval_90": [
                 max(lower, prediction - q90),
                 min(upper, prediction + q90),
@@ -370,10 +411,12 @@ def resolve_node_ratios(
         reason = "model_unavailable"
         detail = str(exc)
     else:
-        if design_mode is None:
-            return base_decision
         metadata = dict(base_decision.metadata)
-        if design_mode not in SUPPORTED_DESIGN_MODES:
+        effective_mode = UNCOMMITTED_DESIGN_MODE if design_mode is None else design_mode
+        selection_source = (
+            "unspecified_uncommitted" if design_mode is None else "designer_selected"
+        )
+        if effective_mode not in ALLOWED_DESIGN_MODES:
             metadata["design_mode"] = {
                 "requested": design_mode,
                 "applied": False,
@@ -386,9 +429,11 @@ def resolve_node_ratios(
                 metadata,
             )
         if not _enabled(os.environ.get(DESIGN_MODE_MODEL_ENABLE_ENV)):
+            if design_mode is None:
+                return base_decision
             metadata["design_mode"] = {
                 "requested": design_mode,
-                "selection_source": "designer_selected",
+                "selection_source": selection_source,
                 "applied": False,
                 "fallback_reason": "design_mode_model_disabled",
             }
@@ -402,7 +447,7 @@ def resolve_node_ratios(
             design_model = _configured_design_mode_model()
             if design_model is None:
                 raise NodeModelError("design-mode model is disabled")
-            alpha, alpha_metadata = design_model.predict(feature_values, design_mode)
+            alpha, alpha_metadata = design_model.predict(feature_values, effective_mode)
         except NodeModelOutOfDistribution as exc:
             mode_reason = "out_of_training_range"
             mode_detail = str(exc)
@@ -417,8 +462,8 @@ def resolve_node_ratios(
                 **alpha_metadata,
                 "artifact_version": design_model.artifact["artifact_version"],
                 "model_status": design_model.artifact["status"],
-                "design_mode": design_mode,
-                "selection_source": "designer_selected",
+                "design_mode": effective_mode,
+                "selection_source": selection_source,
             }
             versions = sorted({
                 *[str(value) for value in metadata.get("model_versions", [])],
@@ -437,7 +482,8 @@ def resolve_node_ratios(
                 "model_warnings": model_warnings,
                 "design_mode": {
                     "requested": design_mode,
-                    "selection_source": "designer_selected",
+                    "applied_mode": effective_mode,
+                    "selection_source": selection_source,
                     "applied": True,
                     "historical_mode_source": design_model.artifact.get("historical_mode_source"),
                 },
@@ -450,7 +496,8 @@ def resolve_node_ratios(
             )
         metadata["design_mode"] = {
             "requested": design_mode,
-            "selection_source": "designer_selected",
+            "applied_mode": effective_mode,
+            "selection_source": selection_source,
             "applied": False,
             "fallback_reason": mode_reason,
             "fallback_detail": mode_detail,
@@ -494,7 +541,7 @@ def _design_mode_model_status() -> dict[str, Any]:
             "version": model.artifact.get("artifact_version") if model else None,
             "status": model.artifact.get("status") if model else None,
             "requires_designer_selection": True,
-            "supported_modes": sorted(SUPPORTED_DESIGN_MODES),
+            "supported_modes": sorted(ALLOWED_DESIGN_MODES),
         }
     except Exception as exc:
         return {"enabled": True, "available": False, "reason": str(exc)}
