@@ -7,6 +7,7 @@ from bridge_algorithm_service.node_model import (
     NodeModelOutOfDistribution,
     NodeRatioModelBundle,
 )
+from bridge_algorithm_service.back_half_high_tail import FIXED_RULE_ALPHA
 
 
 def _artifact(target: str, constant: float, feature_names: list[str]) -> dict:
@@ -124,8 +125,30 @@ class NodeModelTests(unittest.TestCase):
         self.assertGreaterEqual(back, 0.5)
         self.assertEqual(front_metadata["prediction_interval_90"], [0.32, 0.48000000000000004])
         self.assertEqual(back_metadata["prediction_interval_90"], [0.55, 0.75])
+        self.assertFalse(back_metadata["high_tail_mix_applied"])
         with self.assertRaisesRegex(Exception, "unsupported outer-node design mode"):
             model.predict({}, "automatic")
+
+    def test_design_mode_back_half_mixes_yonggui_like_shrinkage_to_two_thirds(self) -> None:
+        artifact = _design_mode_artifact()
+        artifact["experts"]["back_half"]["constant"] = 0.597
+        artifact["back_half_high_tail"] = {
+            "method": "rule_floor_when_expert_below_median_by_shrink_band",
+            "rule_alpha": FIXED_RULE_ALPHA,
+            "train_median": 0.622,
+            "shrink_band": 0.02,
+            "high_tail_alpha": 0.70,
+            "high_tail_train_rows": 7,
+        }
+        model = DesignModeAlphaModel(artifact)
+
+        back, metadata = model.predict({}, "back_half")
+        front, _ = model.predict({}, "front_half")
+
+        self.assertGreaterEqual(back, FIXED_RULE_ALPHA - 1e-12)
+        self.assertTrue(metadata["high_tail_mix_applied"])
+        self.assertAlmostEqual(front, 0.4)
+        self.assertLess(front, 0.5)
 
     def test_design_mode_model_rejects_artifact_that_failed_gate(self) -> None:
         artifact = _design_mode_artifact()

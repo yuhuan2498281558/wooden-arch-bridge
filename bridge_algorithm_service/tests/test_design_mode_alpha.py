@@ -5,6 +5,12 @@ import unittest
 import numpy as np
 from sklearn.model_selection import LeaveOneGroupOut
 
+from bridge_algorithm_service.back_half_high_tail import (
+    BACK_HALF_HIGH_TAIL_ALPHA,
+    BACK_HALF_SHRINK_BAND,
+    FIXED_RULE_ALPHA,
+    mix_back_half_high_tail_alpha,
+)
 from ml_pipeline.train.design_mode_alpha import (
     _classes,
     _row_flags,
@@ -46,6 +52,74 @@ def _yuanji_row() -> dict:
         "bridge_key": "b-yuanji",
         "bridge_name": "远济桥",
     }
+
+
+def _yonggui_row() -> dict:
+    # 咏归 independent_holdout: span backfilled 21.7 m, L/R 0.755/0.741, mean 0.748.
+    return {
+        "span_m": 21.7,
+        "three_miao_rise_span_ratio": 0.19,
+        "design_target_alpha": 0.748,
+        "observed_alpha_left": 0.755,
+        "observed_alpha_right": 0.741,
+        "sample_key": "yonggui",
+        "split_group_key": "g-yonggui",
+        "bridge_key": "b-yonggui",
+        "bridge_name": "咏归桥",
+    }
+
+
+def _median_back_half_row() -> dict:
+    return {
+        "span_m": 16.0,
+        "three_miao_rise_span_ratio": 0.19,
+        "design_target_alpha": 0.629,
+        "observed_alpha_left": 0.630,
+        "observed_alpha_right": 0.628,
+        "sample_key": "median-back",
+        "split_group_key": "g-median-back",
+        "bridge_key": "b-median-back",
+        "bridge_name": "median-back-half",
+    }
+
+
+def _lanxia_like_row() -> dict:
+    return {
+        "span_m": 14.0,
+        "three_miao_rise_span_ratio": 0.19,
+        "design_target_alpha": 0.21,
+        "observed_alpha_left": 0.26,
+        "observed_alpha_right": 0.16,
+        "sample_key": "lanxia",
+        "split_group_key": "g-lanxia",
+        "bridge_key": "b-lanxia",
+        "bridge_name": "岚下桥",
+    }
+
+
+class _ShrinkBackHalfExpert:
+    """Span-only map matching v9 咏归 shrinkage: 21.7 m → ~0.597, 16 m → ~0.630."""
+
+    def predict(self, X: np.ndarray) -> np.ndarray:
+        span = np.asarray(X, dtype=float)[:, 0]
+        return 0.722 - 0.00576 * span
+
+
+def _shrinking_back_half_model() -> dict:
+    model = fit_design_mode_model(_rows(), _median_specs())
+    model["experts"]["back_half"] = {
+        "model_name": "ridge",
+        "feature_set": "span_only",
+        "feature_names": ["span_m"],
+        "params": {"alpha": 1e-8},
+        "constant": None,
+        "estimator": _ShrinkBackHalfExpert(),
+    }
+    # Verified committed back-half median on the 103-sample set.
+    model["back_half_high_tail"]["train_median"] = 0.622
+    model["back_half_high_tail"]["shrink_band"] = BACK_HALF_SHRINK_BAND
+    model["back_half_high_tail"]["rule_alpha"] = FIXED_RULE_ALPHA
+    return model
 
 
 def _median_specs() -> dict[str, dict]:
@@ -173,6 +247,68 @@ class DesignModeAlphaTests(unittest.TestCase):
             ungated_fallback=np.asarray([0.503]),
         )
         self.assertAlmostEqual(float(v6_like[0]), 0.503)
+
+    def test_yonggui_like_back_half_is_lifted_off_bulk_shrinkage(self) -> None:
+        yonggui = _yonggui_row()
+        median_row = _median_back_half_row()
+        lanxia = _lanxia_like_row()
+        yuanji = _yuanji_row()
+        self.assertEqual(int(_classes([yonggui])[0]), 1)
+        self.assertEqual(int(_classes([median_row])[0]), 1)
+        self.assertEqual(int(_classes([lanxia])[0]), 0)
+        self.assertEqual(int(_classes([yuanji])[0]), -1)
+
+        model = _shrinking_back_half_model()
+        raw_yonggui = float(_ShrinkBackHalfExpert().predict(np.asarray([[21.7]]))[0])
+        raw_median = float(_ShrinkBackHalfExpert().predict(np.asarray([[16.0]]))[0])
+        self.assertAlmostEqual(raw_yonggui, 0.597, places=3)
+        self.assertLess(raw_yonggui, 0.62)
+
+        predicted = predict_design_mode_model(
+            model,
+            [yonggui, median_row, lanxia, yuanji],
+            ["back_half", "back_half", "front_half", UNCOMMITTED_STRUCTURE_MODE],
+        )
+        yonggui_hat, median_hat, lanxia_hat, yuanji_hat = (float(value) for value in predicted)
+
+        self.assertGreater(yonggui_hat, raw_yonggui)
+        self.assertGreaterEqual(yonggui_hat, FIXED_RULE_ALPHA - 1e-12)
+        self.assertLess(
+            abs(yonggui_hat - 0.748),
+            abs(raw_yonggui - 0.748),
+        )
+        self.assertLessEqual(abs(yonggui_hat - 0.748), abs(FIXED_RULE_ALPHA - 0.748) + 1e-12)
+
+        self.assertAlmostEqual(median_hat, raw_median, places=5)
+        self.assertLess(median_hat, 0.70)
+        self.assertNotAlmostEqual(median_hat, 0.75, places=2)
+
+        self.assertLess(lanxia_hat, 0.5)
+        self.assertLess(yuanji_hat, 0.55)
+        self.assertNotAlmostEqual(yuanji_hat, FIXED_RULE_ALPHA, places=2)
+        self.assertLess(abs(yuanji_hat - 0.503), abs(yonggui_hat - 0.503))
+
+    def test_high_tail_mix_only_fires_on_material_below_median_shrinkage(self) -> None:
+        config = {
+            "train_median": 0.622,
+            "shrink_band": BACK_HALF_SHRINK_BAND,
+            "rule_alpha": FIXED_RULE_ALPHA,
+        }
+        yonggui, yonggui_applied = mix_back_half_high_tail_alpha(0.597, config)
+        median, median_applied = mix_back_half_high_tail_alpha(0.630, config)
+        already_high, high_applied = mix_back_half_high_tail_alpha(0.70, config)
+        missing, missing_applied = mix_back_half_high_tail_alpha(0.597, None)
+
+        self.assertTrue(yonggui_applied)
+        self.assertAlmostEqual(yonggui, FIXED_RULE_ALPHA)
+        self.assertFalse(median_applied)
+        self.assertAlmostEqual(median, 0.630)
+        self.assertFalse(high_applied)
+        self.assertAlmostEqual(already_high, 0.70)
+        self.assertFalse(missing_applied)
+        self.assertAlmostEqual(missing, 0.597)
+        self.assertEqual(BACK_HALF_HIGH_TAIL_ALPHA, 0.70)
+        self.assertEqual(BACK_HALF_SHRINK_BAND, 0.02)
 
 
 if __name__ == "__main__":

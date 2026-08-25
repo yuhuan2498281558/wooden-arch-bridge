@@ -24,6 +24,7 @@
 
 - `bridge_algorithm_service/node_geometry.py`：比例测量、平行斜弦拟合、节点重建、可行域和兼容载荷。
 - `bridge_algorithm_service/node_model.py`：受控加载 `alpha/beta` Pilot 产物，构建设计时特征，执行训练范围检查、预测合法性检查和整组规则回退。
+- `bridge_algorithm_service/back_half_high_tail.py`：已提交后半区咏归式高尾的保守 2/3 混合；不改 Ridge，不新增在线模式。
 - `bridge_algorithm_service/annotation_tool/index.html`：单页本地八点标注与复核工具。
 - `ml_pipeline/prepare/symmetric_targets.py`：JSON → 训练行及中心对称设计标签。
 - `ml_pipeline/prepare/repair_bridge_metadata.py`：桥名、来源分组和文件名修复。
@@ -91,7 +92,7 @@
 - v6 模型产物记录标准化 k 近邻局部适用域；服务端继续对硬范围越界执行整组规则回退，对范围内但远离训练点的输入返回 `sparse_training_region` 复核提示，并按开发集分组 OOF q90 给出截断到可行域的经验预测区间。
 - v7 在冻结 v5 分区上以历史代理比较 Ridge、Huber 和中位数分位回归；抗噪声候选未达到 `0.002` 的稳定改善门槛，两个目标保留 Ridge，冻结留出桥级宏 MAE 为 `0.09333/0.02991`。产物标记 `research_proxy_not_for_deployment` 并故意不满足服务加载契约，防止把历史现状模型误接为新桥设计模型。
 - v8 先用 Logistic 判断外节点前/后半区，再由两套独立 Ridge 预测 `alpha`。类型已知时开发集 LOGO 桥级宏 MAE 为 `0.05299`，但自动门控平衡准确率仅 `0.68834`，端到端 MAE/q90 为 `0.08457/0.18278`，未通过相对 v6 的替换门槛；研究产物状态为 `research_structure_gate_not_for_deployment`。
-- v9 取消自动门控和新增人工重标：历史类型按边界带派生（贴边不切后半区），不声称为独立专家标注；在线由设计人员在自然语言交互区选择 `front_half/back_half`，未传值统一默认 `back_half`，自然语言文本中的明确模式覆盖控件值。前后半区分别选择净跨 Ridge，开发集 LOGO 桥级宏 MAE `0.05296`、模式宏 MAE `0.05163`、q90 `0.10638`；只允许受控 Pilot 接入。派生门控实现于 `derived_structure_mode`（`structure_gated_alpha.py`）。
+- v9 取消自动门控和新增人工重标：历史类型按边界带派生（贴边不切后半区），不声称为独立专家标注；在线由设计人员在自然语言交互区选择 `front_half/back_half`，未传值统一默认 `back_half`，自然语言文本中的明确模式覆盖控件值。前后半区分别选择净跨 Ridge；已提交后半区若专家相对训练中位数明显向下收缩（咏归式），则与 2/3 规则取较高值，不另拟合高尾专家、不改 Ridge 类。开发集 LOGO 桥级宏 MAE `0.05296`、模式宏 MAE `0.05163`、q90 `0.10638`；只允许受控 Pilot 接入。派生门控实现于 `derived_structure_mode`（`structure_gated_alpha.py`），高尾混合实现于 `back_half_high_tail.py`。
 - v9 通过独立环境开关只覆盖 alpha，beta 保持 v6；v9 未启用、契约不符或越出适用域时回退 v6/规则，并记录 `design_mode.applied=false`。若回退 alpha 仍位于所选半区可生成带回退标识的方案图，否则拒绝出图。
 - `ml_pipeline/train/partial_pooling_alpha.py` 是 v10 离线研究：在显式模式条件下用对称编码联合拟合模式截距、公共跨径斜率和受惩罚的模式×跨径交互，并与分区中位数、完全共享斜率和 v9 独立专家在冻结分区上比较。开发集筛选采用 `GroupKFold(5)`，确认采用 `split_group_key` LOGO；当前 M2 的交互惩罚选到 `1000`，退化为近似共享斜率，且未达到相对 v9 的 `0.002` 替换门槛。该脚本只写研究指标、预测、分组 conformal 区间和审计，不写部署 joblib，不改变线上 v9/beta。
 - `ml_pipeline/train/angle_ablation_alpha.py` 是 v11 倾斜角消融：共享模式截距下分别比较净跨、`atan(3f/L)` 倾斜角、净跨+倾斜角和净跨+矢跨比，并显式拒绝把角度与矢跨比同时输入。开发集模式宏 MAE 为 `0.05166/0.05722/0.05254/0.05260`；净跨+角度相对净跨的桥级配对 MAE 增加 `0.00074`（95% bootstrap CI `[0.00043,0.00111]`），未通过替换门槛。实验只输出离线指标、预测、配对审计和图表，不改线上模型。
