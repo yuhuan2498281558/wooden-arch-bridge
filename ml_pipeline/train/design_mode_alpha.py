@@ -18,6 +18,11 @@ from bridge_algorithm_service.back_half_high_tail import (
     back_half_high_tail_record,
     mix_back_half_high_tail_values,
 )
+from bridge_algorithm_service.front_half_low_tail import (
+    FRONT_HALF_LOW_TAIL_ALPHA,
+    front_half_low_tail_record,
+    mix_front_half_low_tail_values,
+)
 from ml_pipeline.prepare.symmetric_targets import collect_annotation_paths
 from ml_pipeline.train.feature_ablation import FEATURE_SETS
 from ml_pipeline.train.model_improvement import load_frozen_partition
@@ -207,6 +212,7 @@ def fit_design_mode_model(
         mode_rows = [row for index, row in enumerate(rows) if classes[index] == class_index]
         mode_rows_by_name[mode_name] = mode_rows
         experts[mode_name] = _fit_expert(mode_rows, selected_specs[mode_name])
+    front_targets = _target(mode_rows_by_name["front_half"])
     back_targets = _target(mode_rows_by_name["back_half"])
     return {
         "experts": experts,
@@ -216,6 +222,10 @@ def fit_design_mode_model(
         "back_half_high_tail": back_half_high_tail_record(
             float(np.median(back_targets)),
             int(np.sum(back_targets >= BACK_HALF_HIGH_TAIL_ALPHA)),
+        ),
+        "front_half_low_tail": front_half_low_tail_record(
+            float(np.median(front_targets)),
+            int(np.sum(front_targets < FRONT_HALF_LOW_TAIL_ALPHA)),
         ),
     }
 
@@ -238,6 +248,12 @@ def predict_design_mode_model(
                 raw, _ = mix_back_half_high_tail_values(
                     raw,
                     model.get("back_half_high_tail"),
+                )
+            elif mode_name == "front_half":
+                # Documented no-op: 岚下 is an isolated low-tail holdout.
+                raw, _ = mix_front_half_low_tail_values(
+                    raw,
+                    model.get("front_half_low_tail"),
                 )
             predictions[selected] = raw
     uncommitted = np.flatnonzero(classes < 0)
@@ -681,7 +697,8 @@ def _report(
         "",
         f"- 历史前/后半区只在两侧都明显离开 0.5±{STRUCTURE_BOUNDARY_BAND:g} 时派生；贴边样本标为 uncommitted，不因均值 ≥0.5 就切到后半区。依据：远济 holdout 均值 0.503（左右 0.506/0.500）及 22/103 条 |α-0.5|≤{STRUCTURE_BOUNDARY_BAND:g}。",
         "- 在线使用前提仍是设计人员预先给定结构模式；本实验不运行自动分类器。贴边样本的派生评估走连续/v6 式预测，不把 Ridge 专家换成别的学习器。",
-        "- 已提交后半区内：若专家相对训练中位数明显向下收缩（咏归式 ~0.597 vs 中位数 ~0.622），则与 2/3 规则取较高值。α≥0.70 仅 7 条，不够拟合第二套专家；北涧/田地专家输出落在 0.62–0.64 主体内，保守混合不会把它们抬到 0.75。岚下前半区低尾不在本实验范围。",
+        "- 已提交后半区内：若专家相对训练中位数明显向下收缩（咏归式 ~0.597 vs 中位数 ~0.622），则与 2/3 规则取较高值。α≥0.70 仅 7 条，不够拟合第二套专家；北涧/田地专家输出落在 0.62–0.64 主体内，保守混合不会把它们抬到 0.75。",
+        "- 前半区岚下（2026-08-25 重标 L/R 0.277/0.187、均值 0.232、净跨 15.8 m）是 103 条中唯一最低点；v9 前半区专家约 0.427，相对中位数约 0.449 仍落在主体。照搬咏归 0.02 触发会把约 0.45 的前半区主体拖向 0.23，故不混合、不删样本、不换 Ridge。",
         f"- 共 {distribution['rows']} 条：前半区 {distribution['front_half_rows']} 条，后半区 {distribution['back_half_rows']} 条，未提交 {distribution['uncommitted_rows']} 条。",
         f"- 边界 ±{STRUCTURE_BOUNDARY_BAND:g} 有 {distribution['within_boundary_band_rows']} 条；左右两侧都明显相反半区才计结构分歧，现有 {distribution['left_right_half_disagreement_rows']} 条。",
         "",
@@ -909,6 +926,7 @@ def run_design_mode_alpha(
             ),
             "deployment_contract": "designer supplies front_half/back_half before prediction",
             "back_half_high_tail": full_model.get("back_half_high_tail"),
+            "front_half_low_tail": full_model.get("front_half_low_tail"),
         },
         "integration_gate_passed": gate_passed,
         "integration_gate_reasons": gate_reasons,

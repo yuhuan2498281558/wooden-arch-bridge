@@ -11,6 +11,17 @@ from bridge_algorithm_service.back_half_high_tail import (
     FIXED_RULE_ALPHA,
     mix_back_half_high_tail_alpha,
 )
+from bridge_algorithm_service.front_half_low_tail import (
+    FRONT_HALF_LOW_TAIL_MIX_ENABLED,
+    FRONT_HALF_TRAIN_MEDIAN,
+    LANXIA_OBSERVED_ALPHA,
+    LANXIA_OBSERVED_LEFT,
+    LANXIA_OBSERVED_RIGHT,
+    LANXIA_SPAN_M,
+    LANXIA_V9_FRONT_EXPERT,
+    copied_high_tail_trigger_would_fire,
+    mix_front_half_low_tail_alpha,
+)
 from ml_pipeline.train.design_mode_alpha import (
     _classes,
     _row_flags,
@@ -84,16 +95,31 @@ def _median_back_half_row() -> dict:
 
 
 def _lanxia_like_row() -> dict:
+    # 岚下 2026-08-25 re-annotation: span 15.8 m, L/R 0.277/0.187, mean 0.232.
     return {
-        "span_m": 14.0,
+        "span_m": LANXIA_SPAN_M,
         "three_miao_rise_span_ratio": 0.19,
-        "design_target_alpha": 0.21,
-        "observed_alpha_left": 0.26,
-        "observed_alpha_right": 0.16,
+        "design_target_alpha": LANXIA_OBSERVED_ALPHA,
+        "observed_alpha_left": LANXIA_OBSERVED_LEFT,
+        "observed_alpha_right": LANXIA_OBSERVED_RIGHT,
         "sample_key": "lanxia",
         "split_group_key": "g-lanxia",
         "bridge_key": "b-lanxia",
         "bridge_name": "岚下桥",
+    }
+
+
+def _median_front_half_row() -> dict:
+    return {
+        "span_m": 16.0,
+        "three_miao_rise_span_ratio": 0.19,
+        "design_target_alpha": 0.449,
+        "observed_alpha_left": 0.452,
+        "observed_alpha_right": 0.446,
+        "sample_key": "median-front",
+        "split_group_key": "g-median-front",
+        "bridge_key": "b-median-front",
+        "bridge_name": "median-front-half",
     }
 
 
@@ -309,6 +335,51 @@ class DesignModeAlphaTests(unittest.TestCase):
         self.assertAlmostEqual(missing, 0.597)
         self.assertEqual(BACK_HALF_HIGH_TAIL_ALPHA, 0.70)
         self.assertEqual(BACK_HALF_SHRINK_BAND, 0.02)
+
+    def test_lanxia_like_stays_front_half_without_low_tail_mix(self) -> None:
+        lanxia = _lanxia_like_row()
+        median_front = _median_front_half_row()
+        yonggui = _yonggui_row()
+        yuanji = _yuanji_row()
+        self.assertEqual(int(_classes([lanxia])[0]), 0)
+        self.assertEqual(int(_classes([median_front])[0]), 0)
+        self.assertEqual(int(_classes([yonggui])[0]), 1)
+        self.assertEqual(int(_classes([yuanji])[0]), -1)
+        self.assertFalse(FRONT_HALF_LOW_TAIL_MIX_ENABLED)
+
+        naive_would_fire = copied_high_tail_trigger_would_fire(LANXIA_V9_FRONT_EXPERT)
+        self.assertTrue(naive_would_fire)
+        self.assertLess(FRONT_HALF_TRAIN_MEDIAN - LANXIA_V9_FRONT_EXPERT, 0.03)
+        unchanged, applied = mix_front_half_low_tail_alpha(LANXIA_V9_FRONT_EXPERT)
+        self.assertFalse(applied)
+        self.assertAlmostEqual(unchanged, LANXIA_V9_FRONT_EXPERT)
+
+        model = fit_design_mode_model(_rows(), _median_specs())
+        model["experts"]["front_half"] = {
+            "model_name": "median",
+            "feature_set": "none",
+            "feature_names": [],
+            "params": {},
+            "constant": LANXIA_V9_FRONT_EXPERT,
+            "estimator": None,
+        }
+        self.assertFalse(model["front_half_low_tail"]["enabled"])
+
+        predicted = predict_design_mode_model(
+            model,
+            [lanxia, median_front, yonggui, yuanji],
+            ["front_half", "front_half", "back_half", UNCOMMITTED_STRUCTURE_MODE],
+        )
+        lanxia_hat, median_hat, yonggui_hat, yuanji_hat = (float(value) for value in predicted)
+
+        self.assertAlmostEqual(lanxia_hat, LANXIA_V9_FRONT_EXPERT)
+        self.assertAlmostEqual(median_hat, LANXIA_V9_FRONT_EXPERT)
+        self.assertGreater(lanxia_hat, 0.35)
+        self.assertLess(lanxia_hat, 0.5)
+        self.assertNotAlmostEqual(median_hat, 0.25, places=2)
+        self.assertGreaterEqual(yonggui_hat, 0.5)
+        self.assertEqual(int(_classes([yuanji])[0]), -1)
+        self.assertLess(yuanji_hat, 0.55)
 
 
 if __name__ == "__main__":

@@ -10,9 +10,12 @@ When a committed back-half expert has shrunk *materially below* the
 training-target median, predictions are floored at the 2/3 rule. Typical
 0.62–0.64 predictions stay put and are not dragged to 0.75.
 
-Front-half (岚下-like) and uncommitted boundary (远济-like) paths must not
-call this helper. Online v9 stays designer-specified front_half/back_half;
-the mix is an internal expert post-process, not a new UI mode.
+Front-half (岚下-like) must not call this helper: v9 front expert ~0.427
+sits on the bulk median ~0.449, so a copied trigger would wreck ~0.45
+front-half samples. See ``front_half_low_tail.py``. Uncommitted boundary
+(远济-like) paths must not call this helper either. Online v9 stays
+designer-specified front_half/back_half; the mix is an internal expert
+post-process, not a new UI mode.
 """
 from __future__ import annotations
 

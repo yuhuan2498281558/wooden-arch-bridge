@@ -12,6 +12,7 @@ import numpy as np
 
 from .node_geometry import DEFAULT_ALPHA, DEFAULT_BETA, ratio_warnings
 from .back_half_high_tail import mix_back_half_high_tail_alpha
+from .front_half_low_tail import mix_front_half_low_tail_alpha
 
 
 MODEL_ENABLE_ENV = "BRIDGE_NODE_MODEL_ENABLED"
@@ -274,10 +275,16 @@ class DesignModeAlphaModel:
         else:
             prediction = float(estimator.predict(values)[0])
         high_tail_applied = False
+        low_tail_applied = False
         if design_mode == "back_half":
             prediction, high_tail_applied = mix_back_half_high_tail_alpha(
                 prediction,
                 self.artifact.get("back_half_high_tail"),
+            )
+        elif design_mode == "front_half":
+            prediction, low_tail_applied = mix_front_half_low_tail_alpha(
+                prediction,
+                self.artifact.get("front_half_low_tail"),
             )
         output_bounds = expert.get("output_bounds")
         if not isinstance(output_bounds, (list, tuple)) or len(output_bounds) != 2:
@@ -305,6 +312,7 @@ class DesignModeAlphaModel:
             "feature_names": list(feature_names),
             "prediction": prediction,
             "high_tail_mix_applied": high_tail_applied,
+            "low_tail_mix_applied": low_tail_applied,
             "prediction_interval_90": [
                 max(lower, prediction - q90),
                 min(upper, prediction + q90),

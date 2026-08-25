@@ -128,7 +128,7 @@ python -m ml_pipeline.train.design_mode_alpha `
   --baseline-dir <v6结果目录>
 ```
 
-v9 不新增人工重标。自动派生用 `STRUCTURE_BOUNDARY_BAND`（±0.03）：贴边（远济 0.503 / 0.506/0.500）为 `uncommitted`，评估走 v6 连续预测；在线仍由设计人员选 `front_half/back_half`。已提交后半区若专家相对训练中位数明显向下收缩（咏归式 ~0.597 vs ~0.622），则与 2/3 取较高值；α≥0.70 仅 7 条，不另拟合专家、不换 Ridge；岚下低尾不做。产物仍为 `research_designer_mode_not_for_deployment`。云端无 JSON 时本地复跑后看留出 CSV 的远济（uncommitted）和咏归（后半区应高于 ~0.597，且不差于 2/3）。
+v9 不新增人工重标。自动派生用 `STRUCTURE_BOUNDARY_BAND`（±0.03）：贴边（远济 0.503 / 0.506/0.500）为 `uncommitted`，评估走 v6 连续预测；在线仍由设计人员选 `front_half/back_half`。已提交后半区若专家相对训练中位数明显向下收缩（咏归式 ~0.597 vs ~0.622），则与 2/3 取较高值；α≥0.70 仅 7 条，不另拟合专家、不换 Ridge。岚下 2026-08-25 重标均值 0.232，v9 前半区专家约 0.427 落在主体，不混合、不删样本。产物仍为 `research_designer_mode_not_for_deployment`。云端无 JSON 时本地复跑后看留出 CSV 的远济、咏归和岚下行。
 
 v10 显式模式部分共享实验使用 `ml_pipeline.train.partial_pooling_alpha`：冻结 v5 分区，比较分区中位数、共享跨径斜率、受惩罚的模式斜率差和 v9 独立专家。开发集 LOGO 的模式宏 MAE 分别为 `0.05459/0.05166/0.05166/0.05163`，q90 分别为 `0.11002/0.10135/0.10146/0.10638`。部分共享模型选择 `shared_penalty=10`、`interaction_penalty=1000`，表明现有样本不支持稳定的模式特异斜率；按容差优先选择更简单的共享斜率 M1，但未达到相对 v9 的 `0.002` 替换门槛。历史留出 M1 模式宏 MAE 为 `0.05929`，因该留出已反复查看，仅作描述。v10 不生成部署产物，线上 v9 和 beta 均保持不变。
 
