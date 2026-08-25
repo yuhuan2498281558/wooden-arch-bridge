@@ -57,8 +57,10 @@ schema_view = get_schema_view(
     generator_class=CustomOpenAPISchemaGenerator,
 )
 # 前端页面映射
+from django.core.exceptions import SuspiciousFileOperation
 from django.http import Http404, HttpResponse
 from django.shortcuts import render
+from django.utils._os import safe_join
 import mimetypes
 import os
 
@@ -68,8 +70,14 @@ def web_view(request):
 
 
 def serve_web_files(request, filename):
-    # 设定文件路径
-    filepath = os.path.join(settings.BASE_DIR, 'templates', 'web', filename)
+    # 防止路径穿越：以 templates/web 为基准做 safe_join。
+    # 注意：safe_join 只保证结果在传入的 base 内；base 必须是 web 根目录，
+    # 否则 BASE_DIR 内的其他文件（如 conf/env.py）仍可被 ../ 读到。
+    web_root = os.path.join(settings.BASE_DIR, 'templates', 'web')
+    try:
+        filepath = safe_join(web_root, filename)
+    except (SuspiciousFileOperation, ValueError):
+        raise Http404("File does not exist")
 
     # 检查文件是否存在
     if not os.path.exists(filepath):

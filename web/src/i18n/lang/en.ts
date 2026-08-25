@@ -8,7 +8,7 @@ export default {
       quickNavigationTool: 'Quick Navigation Tools',
     },
     footer: {
-      copyright: ' ❤️ Powered by DVAdmin Copyright © DVAdmin Team ❤️',
+      copyright: 'Timber Arch Bridge Intelligent Design Platform',
     },
     router: {
       home: 'Home',
@@ -295,7 +295,7 @@ export default {
     personal: {
       PersonalInfo: 'Personal Information',
       PersonalInfo1: ' Idleness is the root of all evil.',
-      PersonalInfo2: 'DVAdmin is an efficient and user-friendly backend management system developed based on Django and Vue.js, primarily designed for rapidly building management backends for enterprise-level web applications. Utilizing a front-end and back-end separation architecture, it provides a comprehensive set of out-of-the-box functional modules, assisting developers and businesses in reducing development costs and enhancing management efficiency. (Note: The prompt text can be changed by modifying the personal.PersonalInfo2 file located in the src/i18n/lang/ directory under the frontend directory.)',
+      PersonalInfo2: 'The Timber Arch Bridge Intelligent Design Platform combines parametric design, structural prediction, safety analysis, 3D visualization, and engineering drawing generation in one workspace.',
       MyInfo: 'My Info',
       UpdateInfo: 'Update My Info',
       AccountSecurity: 'Account Security',

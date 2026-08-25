@@ -1,363 +1,455 @@
 <template>
-	<div class="login-container flex z-10">
-		<div class="login-left">
-			<div class="login-left-logo">
-				<img :src="siteLogo" />
-				<div class="login-left-logo-text">
-					<span>{{ getSystemConfig['login.site_title'] || getThemeConfig.globalViceTitle }}</span>
+	<div class="bridge-login-page">
+		<section class="hero-panel">
+			<header class="brand-row">
+				<div>
+					<strong>桥梁智能设计平台</strong>
+					<span>编木拱廊桥参数化智能设计</span>
+				</div>
+			</header>
+
+			<div class="hero-copy">
+				<p>参数化设计 / 结构预测 / 安全分析</p>
+				<h1>中国木拱廊桥智能设计系统</h1>
+				<span>融合参数化设计、结构预测、安全性分析、三维模型展示与工程图纸生成的一体化设计工作台。</span>
+			</div>
+
+			<div class="feature-strip">
+				<div>
+					<strong>SSA-XGBoost</strong>
+					<span>参数预测</span>
+				</div>
+				<div>
+					<strong>CF-BPNN</strong>
+					<span>智能优化</span>
+				</div>
+				<div>
+					<strong>BIM / 3D</strong>
+					<span>模型联动</span>
 				</div>
 			</div>
-		</div>
-		<div class="login-right flex z-10">
-			<div class="login-right-warp flex-margin">
-<!--				<span class="login-right-warp-one"></span>-->
-<!--				<span class="login-right-warp-two"></span>-->
-				<div class="login-right-warp-mian">
-					<div class="login-right-warp-main-title">
-            <span>{{getSystemConfig['login.site_name'] || getThemeConfig.globalViceTitleMsg }}</span>
-            <br>
-            <span>{{userInfos.pwd_change_count===0 ? $t('message.pages.login.validation.firstLoginChangePwd') : $t('message.pages.login.signInText')}}</span>
-          </div>
-					<div class="login-right-warp-main-form">
-						<div v-if="!state.isScan">
-							<el-tabs v-model="state.tabsActiveName">
-                <el-tab-pane :label="$t('message.pages.login.label.changePwd')" name="changePwd"  v-if="userInfos.pwd_change_count===0">
-                  <ChangePwd />
-                </el-tab-pane>
-								<el-tab-pane :label="$t('message.pages.login.label.one1')" name="account" v-else>
-									<Account />
-								</el-tab-pane>
 
-								<!-- TODO 手机号码登录未接入，展示隐藏 -->
-								<el-tab-pane :label="$t('message.pages.login.label.two2')" name="mobile">
-									<Mobile />
-								</el-tab-pane>
+			<div class="bridge-visual">
+				<img :src="bridgeLoginImage" alt="木拱廊桥三维模型" />
+			</div>
+		</section>
 
-                <el-tab-pane :label="$t('message.pages.login.label.two3')" name="scan">
-									<scan />
-								</el-tab-pane>
+		<section class="login-panel">
+			<div class="login-meta">
+				<span>智能设计工作台</span>
+			</div>
+			<div class="login-card">
+				<div class="login-card-title">
+					<span>木拱廊桥设计系统</span>
+					<h2>{{ userInfos.pwd_change_count === 0 ? '首次登录请修改密码' : '欢迎回来' }}</h2>
+					<p>登录后进入智能设计工作台</p>
+				</div>
 
-
-							</el-tabs>
-						</div>
-            <OAuth2 />
-
-            <!--						<Scan v-if="state.isScan" />-->
-<!--						<div class="login-content-main-sacn" @click="state.isScan = !state.isScan">-->
-<!--							<i class="iconfont" :class="state.isScan ? 'icon-diannao1' : 'icon-barcode-qr'"></i>-->
-<!--							<div class="login-content-main-sacn-delta"></div>-->
-<!--						</div>-->
-					</div>
+				<div class="login-form-wrap">
+					<ChangePwd v-if="userInfos.pwd_change_count === 0" />
+					<Account v-else />
+					<OAuth2 />
 				</div>
 			</div>
-		</div>
+		</section>
 
-		<div class="login-authorization z-10">
-			<p>Copyright © {{ getSystemConfig['login.copyright'] || '2021-2025 django-vue-admin.com' }} 版权所有</p>
-			<p class="la-other" style="margin-top: 5px;">
-				<a href="https://beian.miit.gov.cn" target="_blank">{{ getSystemConfig['login.keep_record'] ||
-					'晋ICP备18005113号-3' }}</a>
-				|
-				<a :href="getSystemConfig['login.help_url'] ? getSystemConfig['login.help_url'] : '#'"
-					target="_blank">{{ $t('message.pages.login.footer.help') }}</a>
-				|
-				<a
-					:href="getSystemConfig['login.privacy_url'] ? getBaseURL(getSystemConfig['login.privacy_url']) : '#'">{{ $t('message.pages.login.footer.privacy') }}</a>
-				|
-				<a
-					:href="getSystemConfig['login.clause_url'] ? getBaseURL(getSystemConfig['login.clause_url']) : '#'">{{ $t('message.pages.login.footer.clause') }}</a>
-			</p>
-		</div>
-	</div>
-	<div v-if="loginBg">
-		<img :src="loginBg" class="loginBg fixed inset-0 z-1 w-full h-full" />
+		<footer class="login-footer">
+			<span>{{ loginCopyright }}</span>
+			<a href="https://beian.miit.gov.cn" target="_blank">{{ getSystemConfig['login.keep_record'] || '工程设计平台' }}</a>
+		</footer>
 	</div>
 </template>
 
 <script setup lang="ts" name="loginIndex">
-import {defineAsyncComponent, onMounted, reactive, computed, watch} from 'vue';
+import { computed, defineAsyncComponent, onMounted } from 'vue';
 import { storeToRefs } from 'pinia';
-import { useThemeConfig } from '/@/stores/themeConfig';
 import { NextLoading } from '/@/utils/loading';
-import logoMini from '/@/assets/logo-mini.svg';
-import loginMain from '/@/assets/login-main.svg';
-import loginBg from '/@/assets/login-bg.png';
-import { SystemConfigStore } from '/@/stores/systemConfig'
-import { getBaseURL } from "/@/utils/baseUrl";
-// 引入组件
+import bridgeLoginImage from '/@/assets/bridge-login.png';
+import { SystemConfigStore } from '/@/stores/systemConfig';
+import { useUserInfo } from '/@/stores/userInfo';
+
 const Account = defineAsyncComponent(() => import('/@/views/system/login/component/account.vue'));
-const Mobile = defineAsyncComponent(() => import('/@/views/system/login/component/mobile.vue'));
-const Scan = defineAsyncComponent(() => import('/@/views/system/login/component/scan.vue'));
 const ChangePwd = defineAsyncComponent(() => import('/@/views/system/login/component/changePwd.vue'));
 const OAuth2 = defineAsyncComponent(() => import('/@/views/system/login/component/oauth2.vue'));
 
-import _ from "lodash-es";
-import {useUserInfo} from "/@/stores/userInfo";
 const { userInfos } = storeToRefs(useUserInfo());
+const systemConfigStore = SystemConfigStore();
+const { systemConfig } = storeToRefs(systemConfigStore);
 
-// 定义变量内容
-const storesThemeConfig = useThemeConfig();
-const { themeConfig } = storeToRefs(storesThemeConfig);
-const state = reactive({
-	tabsActiveName: 'account',
-	isScan: false,
-});
-
-
-watch(()=>userInfos.value.pwd_change_count,(val)=>{
-  if(val===0){
-    state.tabsActiveName ='changePwd'
-  }else{
-    state.tabsActiveName ='account'
-  }
-},{deep:true,immediate:true})
-
-
-// 获取布局配置信息
-const getThemeConfig = computed(() => {
-	return themeConfig.value;
-});
-
-const systemConfigStore = SystemConfigStore()
-const { systemConfig } = storeToRefs(systemConfigStore)
-const getSystemConfig = computed(() => {
-	return systemConfig.value
-})
-
-const siteLogo = computed(() => {
-	if (!_.isEmpty(getSystemConfig.value['login.site_logo'])) {
-		return getSystemConfig.value['login.site_logo']
+const getSystemConfig = computed(() => systemConfig.value);
+const loginCopyright = computed(() => {
+	const configuredText = String(getSystemConfig.value['login.copyright'] || '').trim();
+	if (!configuredText || /dvadmin|django-vue/i.test(configuredText)) {
+		return 'Copyright © 2026 木拱桥智能设计平台';
 	}
-	return logoMini
+	return configuredText;
 });
 
-const siteBg = computed(() => {
-	if (!_.isEmpty(getSystemConfig.value['login.login_background'])) {
-		return getSystemConfig.value['login.login_background']
-	}
-});
-
-// 页面加载时
 onMounted(() => {
 	NextLoading.done();
 });
 </script>
 
 <style scoped lang="scss">
-.login-container {
-	height: 100%;
-	background: var(--el-color-white);
+.bridge-login-page {
+	position: relative;
+	min-height: 100vh;
+	overflow: hidden;
+	background:
+		linear-gradient(90deg, rgba(248, 250, 247, 0.98) 0%, rgba(246, 248, 242, 0.86) 48%, rgba(242, 245, 241, 0.98) 100%),
+		#f3f5ef;
+	color: #1d261c;
+}
 
-	.login-left {
-		flex: 1;
-		position: relative;
-		background-color: rgba(211, 239, 255, 1);
-		margin-right: 100px;
+.hero-panel {
+	position: absolute;
+	inset: 0;
+	min-width: 0;
+	padding: 42px 54px 96px;
+	display: flex;
+	flex-direction: column;
+	background:
+		radial-gradient(circle at 68% 48%, rgba(199, 144, 52, 0.22), transparent 28%),
+		linear-gradient(180deg, rgba(255, 255, 255, 0.66), rgba(240, 245, 239, 0.94));
 
-		.login-left-logo {
-			display: flex;
-			align-items: center;
-			position: absolute;
-			top: 50px;
-			left: 80px;
-			z-index: 1;
-			animation: logoAnimation 0.3s ease;
-
-			img {
-				width: 52px;
-				height: 52px;
-			}
-
-			.login-left-logo-text {
-				display: flex;
-				flex-direction: column;
-
-				span {
-					margin-left: 10px;
-					font-size: 24px;
-					color: var(--el-color-primary);
-				}
-
-
-			}
-		}
-
-		.login-left-img {
-			position: absolute;
-			top: 50%;
-			left: 50%;
-			transform: translate(-50%, -50%);
-			width: 100%;
-			height: 52%;
-
-			img {
-				width: 100%;
-				height: 100%;
-				animation: error-num 0.6s ease;
-			}
-		}
-
-		.login-left-waves {
-			position: absolute;
-			top: 0;
-			right: -100px;
-		}
-	}
-
-	.login-right {
-		width: 700px;
-
-		.login-right-warp {
-			//border: 1px solid var(--el-color-primary-light-3);
-			border-radius: 3px;
-			width: 500px;
-			height: 500px;
-			position: relative;
-			overflow: hidden;
-			//background-color: var(--el-color-white);
-
-			.login-right-warp-one,
-			.login-right-warp-two {
-				position: absolute;
-				display: block;
-				width: inherit;
-				height: inherit;
-
-				&::before,
-				&::after {
-					content: '';
-					position: absolute;
-					z-index: 1;
-				}
-			}
-
-			.login-right-warp-one {
-				&::before {
-					filter: hue-rotate(0deg);
-					top: 0px;
-					left: 0;
-					width: 100%;
-					height: 3px;
-					background: linear-gradient(90deg, transparent, var(--el-color-primary));
-					animation: loginLeft 3s linear infinite;
-				}
-
-				&::after {
-					filter: hue-rotate(60deg);
-					top: -100%;
-					right: 2px;
-					width: 3px;
-					height: 100%;
-					background: linear-gradient(180deg, transparent, var(--el-color-primary));
-					animation: loginTop 3s linear infinite;
-					animation-delay: 0.7s;
-				}
-			}
-
-			.login-right-warp-two {
-				&::before {
-					filter: hue-rotate(120deg);
-					bottom: 2px;
-					right: -100%;
-					width: 100%;
-					height: 3px;
-					background: linear-gradient(270deg, transparent, var(--el-color-primary));
-					animation: loginRight 3s linear infinite;
-					animation-delay: 1.4s;
-				}
-
-				&::after {
-					filter: hue-rotate(300deg);
-					bottom: -100%;
-					left: 0px;
-					width: 3px;
-					height: 100%;
-					background: linear-gradient(360deg, transparent, var(--el-color-primary));
-					animation: loginBottom 3s linear infinite;
-					animation-delay: 2.1s;
-				}
-			}
-
-			.login-right-warp-mian {
-				display: flex;
-				flex-direction: column;
-				height: 100%;
-
-
-				.login-right-warp-main-title {
-					height: 130px;
-					font-size: 24px;
-          font-weight: 600;
-					text-align: center;
-					letter-spacing: 3px;
-					animation: logoAnimation 0.3s ease;
-					animation-delay: 0.3s;
-					color: var(--el-text-color-primary);
-				}
-
-				.login-right-warp-main-form {
-					flex: 1;
-					padding: 0 50px 50px;
-
-					.login-content-main-sacn {
-						position: absolute;
-						top: 2px;
-						right: 12px;
-						width: 50px;
-						height: 50px;
-						overflow: hidden;
-						cursor: pointer;
-						transition: all ease 0.3s;
-						color: var(--el-color-primary);
-
-						&-delta {
-							position: absolute;
-							width: 35px;
-							height: 70px;
-							z-index: 2;
-							top: 2px;
-							right: 21px;
-							background: var(--el-color-white);
-							transform: rotate(-45deg);
-						}
-
-						&:hover {
-							opacity: 1;
-							transition: all ease 0.3s;
-							color: var(--el-color-primary) !important;
-						}
-
-						i {
-							width: 47px;
-							height: 50px;
-							display: inline-block;
-							font-size: 48px;
-							position: absolute;
-							right: 1px;
-							top: 0px;
-						}
-					}
-				}
-			}
-		}
-	}
-
-	.login-authorization {
+	&::before {
+		content: '';
 		position: absolute;
-		bottom: 30px;
+		inset: 0;
+		background:
+			linear-gradient(90deg, rgba(255, 255, 255, 0.86), rgba(255, 255, 255, 0.22) 42%, rgba(255, 255, 255, 0.74) 82%),
+			linear-gradient(180deg, rgba(255, 255, 255, 0.9), transparent 36%, rgba(248, 250, 247, 0.94));
+		z-index: 1;
+		pointer-events: none;
+	}
+}
+
+.brand-row {
+	display: flex;
+	align-items: center;
+	position: relative;
+	z-index: 3;
+
+	strong {
+		display: block;
+		font-size: 18px;
+		font-weight: 700;
+		color: #172033;
+	}
+
+	span {
+		display: block;
+		margin-top: 3px;
+		font-size: 12px;
+		color: #64748b;
+	}
+}
+
+.hero-copy {
+	position: relative;
+	z-index: 3;
+	margin-top: 58px;
+	max-width: 780px;
+
+	p {
+		margin: 0 0 14px;
+		font-size: 12px;
+		font-weight: 700;
+		letter-spacing: 0;
+		text-transform: uppercase;
+		color: #9a661e;
+	}
+
+	h1 {
+		margin: 0;
+		font-size: 42px;
+		line-height: 1.2;
+		font-weight: 800;
+		letter-spacing: 0;
+		color: #172033;
+	}
+
+	span {
+		display: block;
+		max-width: none;
+		margin-top: 16px;
+		font-size: 15px;
+		line-height: 1.8;
+		color: #53615b;
+		white-space: nowrap;
+	}
+}
+
+.bridge-visual {
+	position: absolute;
+	left: -70px;
+	right: 300px;
+	bottom: 54px;
+	height: 64vh;
+	min-height: 460px;
+	display: flex;
+	align-items: flex-end;
+	justify-content: center;
+	pointer-events: none;
+	opacity: 0.98;
+	z-index: 2;
+
+	img {
+		max-width: min(1280px, 112%);
+		max-height: 100%;
+		object-fit: contain;
+		filter: drop-shadow(0 36px 42px rgba(49, 35, 15, 0.25));
+	}
+}
+
+.feature-strip {
+	position: relative;
+	left: auto;
+	right: auto;
+	width: 480px;
+	margin-top: 24px;
+	z-index: 3;
+	display: grid;
+	grid-template-columns: 1.15fr 0.9fr 0.95fr;
+	gap: 1px;
+	border: 1px solid rgba(122, 98, 55, 0.18);
+	border-radius: 8px;
+	overflow: hidden;
+	background: rgba(255, 255, 255, 0.58);
+	backdrop-filter: blur(10px);
+
+	div {
+		padding: 10px 13px;
+		background: rgba(255, 255, 255, 0.48);
+	}
+
+	strong {
+		display: block;
+		font-size: 14px;
+		color: #273526;
+	}
+
+	span {
+		display: block;
+		margin-top: 5px;
+		font-size: 12px;
+		color: #6b7469;
+	}
+}
+
+.login-panel {
+	position: absolute;
+	top: 0;
+	right: 0;
+	bottom: 0;
+	width: 520px;
+	z-index: 3;
+	display: flex;
+	align-items: center;
+	justify-content: center;
+	padding: 42px 54px 42px 24px;
+	background:
+		linear-gradient(90deg, rgba(248, 250, 247, 0), rgba(248, 250, 247, 0.72) 24%, rgba(248, 250, 247, 0.95));
+}
+
+.login-meta {
+	position: absolute;
+	top: 42px;
+	right: 54px;
+	display: inline-flex;
+	align-items: center;
+	gap: 10px;
+	height: 34px;
+	padding: 0 12px;
+	border: 1px solid rgba(154, 102, 30, 0.18);
+	border-radius: 6px;
+	background: rgba(255, 255, 255, 0.64);
+	backdrop-filter: blur(12px);
+	color: #6b7469;
+	font-size: 12px;
+
+}
+
+.login-card {
+	width: 100%;
+	max-width: 420px;
+	padding: 38px 38px 32px;
+	border: 1px solid rgba(216, 207, 188, 0.8);
+	border-radius: 8px;
+	background:
+		linear-gradient(180deg, rgba(255, 255, 255, 0.92), rgba(251, 250, 245, 0.84));
+	backdrop-filter: blur(20px);
+	box-shadow: 0 30px 70px rgba(51, 37, 17, 0.2);
+	transform: translateY(-24px);
+}
+
+.login-card-title {
+	margin-bottom: 24px;
+
+	span {
+		font-size: 13px;
+		font-weight: 700;
+		color: #9a661e;
+	}
+
+	h2 {
+		margin: 8px 0 8px;
+		font-size: 28px;
+		line-height: 1.25;
+		font-weight: 800;
+		color: #1d261c;
+	}
+
+	p {
+		margin: 0;
+		font-size: 13px;
+		color: #6b7469;
+		white-space: nowrap;
+	}
+}
+
+.login-form-wrap {
+	:deep(.el-tabs__header) {
+		display: none;
+	}
+
+	:deep(.fast-title),
+	:deep(.login-content-apply) {
+		display: none;
+	}
+
+	:deep(.el-input__wrapper) {
+		border-radius: 6px !important;
+		background: rgba(255, 255, 255, 0.82);
+		box-shadow: 0 0 0 1px #d8cfbc inset;
+	}
+
+	:deep(.el-input__wrapper:hover) {
+		box-shadow: 0 0 0 1px #b99a62 inset;
+	}
+
+	:deep(.el-button.login-content-submit) {
+		height: 42px;
+		border-radius: 6px;
+		background: #8f5f1f;
+		border-color: #8f5f1f;
+		box-shadow: 0 10px 24px rgba(143, 95, 31, 0.24);
+	}
+}
+
+.login-footer {
+	position: absolute;
+	left: 54px;
+	right: 42px;
+	bottom: 10px;
+	z-index: 4;
+	display: flex;
+	justify-content: space-between;
+	gap: 16px;
+	font-size: 12px;
+	color: #6b7469;
+
+	a {
+		color: #6b7469;
+	}
+}
+
+@media (max-width: 1180px) {
+	.bridge-login-page {
+		min-height: auto;
+		overflow: auto;
+	}
+
+	.hero-panel {
+		position: relative;
+		min-height: 640px;
+	}
+
+	.login-panel {
+		position: relative;
+		width: auto;
+		border-left: 0;
+		border-top: 1px solid #dbe3ea;
+		background: #f8fafc;
+	}
+
+	.login-meta {
+		top: 24px;
+		right: 32px;
+	}
+
+	.login-card {
+		transform: none;
+	}
+
+	.bridge-visual {
+		right: 0;
+	}
+
+	.feature-strip {
+		right: auto;
+		width: min(520px, calc(100% - 108px));
+	}
+
+	.login-footer {
+		position: static;
+		padding: 12px 24px;
+		background: #f8fafc;
+	}
+}
+
+@media (max-width: 720px) {
+	.bridge-login-page {
+		min-height: 100vh;
+	}
+
+	.hero-panel {
+		padding: 28px 22px 96px;
+		min-height: 560px;
+	}
+
+	.hero-copy {
+		margin-top: 36px;
+
+		h1 {
+			font-size: 30px;
+		}
+
+		span {
+			white-space: normal;
+		}
+	}
+
+	.bridge-visual {
 		left: 0;
 		right: 0;
-		text-align: center;
+		bottom: 158px;
+		height: 260px;
+		min-height: 260px;
+	}
 
-		p {
-			font-size: 12px;
-			color: rgba(0, 0, 0, 0.5);
-		}
+	.feature-strip {
+		left: auto;
+		right: auto;
+		width: auto;
+		grid-template-columns: 1fr;
+	}
 
-		a {
-			color: var(--el-color-primary);
-			margin: 0 5px;
-		}
+	.login-panel {
+		padding: 24px 16px;
+	}
+
+	.login-meta {
+		display: none;
+	}
+
+	.login-card {
+		padding: 28px 22px 24px;
+	}
+
+	.login-footer {
+		flex-direction: column;
+		gap: 4px;
 	}
 }
 </style>

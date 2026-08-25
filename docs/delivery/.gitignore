@@ -1,0 +1,11 @@
+_report_assets/
+_report_assets_polished/
+_rendered_report/
+_rendered_polished*/
+_report_contact_sheets/
+_contact_polished*/
+report_QA.pdf
+report_QA.log
+polished_QA.pdf
+polished_QA.log
+polished_a11y_QA*.json

@@ -1,0 +1,1420 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>五节苗八点标注工具</title>
+  <style>
+    :root {
+      color-scheme: light;
+      --bg: #f3f0e9;
+      --panel: #fffdf8;
+      --ink: #20251f;
+      --muted: #6c726b;
+      --line: #d9d4c8;
+      --accent: #1f5f4a;
+      --accent-soft: #e4efe9;
+      --red: #b74d3b;
+      --blue: #286a9f;
+      --warn: #9a5b16;
+      --danger: #a23d35;
+      font-family: "Microsoft YaHei", "PingFang SC", system-ui, sans-serif;
+    }
+
+    * { box-sizing: border-box; }
+    [hidden] { display: none !important; }
+    body { margin: 0; background: var(--bg); color: var(--ink); }
+    button, input, select, textarea { font: inherit; }
+
+    .app {
+      display: grid;
+      grid-template-columns: 320px minmax(480px, 1fr) 340px;
+      min-height: 100vh;
+    }
+
+    .panel {
+      background: var(--panel);
+      border-right: 1px solid var(--line);
+      padding: 22px;
+      overflow: auto;
+    }
+
+    .results-panel { border-right: 0; border-left: 1px solid var(--line); }
+
+    h1 { margin: 0; font-size: 22px; letter-spacing: .02em; }
+    h2 { margin: 24px 0 10px; font-size: 15px; }
+    p { line-height: 1.65; }
+    .subtle { margin: 8px 0 18px; color: var(--muted); font-size: 13px; }
+    .privacy {
+      padding: 10px 12px;
+      border: 1px solid #c9ddd3;
+      border-radius: 9px;
+      background: #eef7f2;
+      color: #315a49;
+      font-size: 12px;
+      line-height: 1.55;
+    }
+
+    .field { margin: 12px 0; }
+    .field label { display: block; margin-bottom: 6px; color: #4b514b; font-size: 12px; }
+    .field input, .field select, .field textarea {
+      width: 100%;
+      padding: 9px 10px;
+      border: 1px solid var(--line);
+      border-radius: 7px;
+      background: white;
+      color: var(--ink);
+      outline: none;
+    }
+    .field input:focus, .field select:focus, .field textarea:focus { border-color: var(--accent); }
+    .field textarea { min-height: 70px; resize: vertical; }
+    .defects-list { display: grid; grid-template-columns: 1fr 1fr; gap: 6px 10px; margin-top: 6px; }
+    .defects-list label { display: flex; align-items: center; gap: 6px; font-size: 12px; color: #4b514b; cursor: pointer; }
+    .defects-list input { width: auto; }
+
+    .button, .file-button {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      min-height: 36px;
+      padding: 8px 12px;
+      border: 1px solid var(--line);
+      border-radius: 7px;
+      background: white;
+      color: var(--ink);
+      cursor: pointer;
+      text-decoration: none;
+      transition: .15s ease;
+    }
+    .button:hover, .file-button:hover { border-color: #8d938d; background: #faf9f5; }
+    .button.primary, .file-button.primary { border-color: var(--accent); background: var(--accent); color: white; }
+    .button:disabled { cursor: not-allowed; opacity: .45; }
+    .button-row { display: flex; flex-wrap: wrap; gap: 8px; }
+    input[type="file"] { display: none; }
+
+    .point-list { display: grid; gap: 7px; margin-top: 12px; }
+    .point-item {
+      display: grid;
+      grid-template-columns: 26px 1fr auto;
+      align-items: center;
+      gap: 9px;
+      width: 100%;
+      padding: 8px 9px;
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      background: white;
+      text-align: left;
+      cursor: pointer;
+    }
+    .point-item.active { border-color: var(--accent); box-shadow: 0 0 0 2px var(--accent-soft); }
+    .point-item.done .point-key { background: var(--accent); color: white; }
+    .point-key {
+      width: 25px;
+      height: 25px;
+      border-radius: 50%;
+      display: grid;
+      place-items: center;
+      background: #ece9e1;
+      font-size: 11px;
+      font-weight: 700;
+    }
+    .point-name { font-size: 13px; }
+    .point-coordinate { color: var(--muted); font-size: 10px; font-variant-numeric: tabular-nums; }
+    .review-queue {
+      display: grid;
+      gap: 8px;
+      margin-top: 10px;
+      padding: 10px;
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      background: #f7f5ef;
+    }
+    .review-queue .status { color: var(--muted); font-size: 11px; line-height: 1.45; overflow-wrap: anywhere; }
+    .drawing-picker {
+      display: grid;
+      gap: 7px;
+      margin-top: 10px;
+      padding: 10px;
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      background: #f7f5ef;
+    }
+    .drawing-picker select {
+      width: 100%;
+      min-width: 0;
+      padding: 8px 9px;
+      border: 1px solid var(--line);
+      border-radius: 7px;
+      background: white;
+      color: var(--ink);
+    }
+    .drawing-picker .status { color: var(--muted); font-size: 11px; line-height: 1.45; overflow-wrap: anywhere; }
+
+    .workspace { min-width: 0; display: flex; flex-direction: column; }
+    .toolbar {
+      min-height: 58px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 12px;
+      padding: 10px 16px;
+      border-bottom: 1px solid var(--line);
+      background: rgba(255, 253, 248, .92);
+    }
+    .toolbar .status { color: var(--muted); font-size: 12px; }
+    .toolbar-actions { display: grid; justify-items: end; gap: 6px; }
+    .interaction-hint { color: var(--muted); font-size: 11px; text-align: right; }
+    .viewport {
+      position: relative;
+      flex: 1;
+      min-height: 560px;
+      overflow: auto;
+      padding: 28px;
+      background-color: #dedbd3;
+      background-image:
+        linear-gradient(45deg, #d5d1c8 25%, transparent 25%),
+        linear-gradient(-45deg, #d5d1c8 25%, transparent 25%),
+        linear-gradient(45deg, transparent 75%, #d5d1c8 75%),
+        linear-gradient(-45deg, transparent 75%, #d5d1c8 75%);
+      background-size: 24px 24px;
+      background-position: 0 0, 0 12px, 12px -12px, -12px 0;
+      overscroll-behavior: contain;
+      user-select: none;
+    }
+    .canvas-shell { width: max-content; margin: auto; background: white; box-shadow: 0 8px 26px rgba(0, 0, 0, .18); }
+    canvas { display: block; cursor: crosshair; touch-action: none; }
+    .viewport.pan-enabled canvas, .viewport.space-pan canvas { cursor: grab; }
+    .viewport.panning, .viewport.panning canvas { cursor: grabbing; }
+    .button[aria-pressed="true"] { border-color: var(--accent); background: var(--accent-soft); color: var(--accent); }
+    .empty-state {
+      position: absolute;
+      inset: 0;
+      display: grid;
+      place-items: center;
+      pointer-events: none;
+      color: #5d625c;
+      text-align: center;
+    }
+    .empty-card { padding: 28px 34px; border-radius: 12px; background: rgba(255, 253, 248, .92); }
+    .empty-card strong { display: block; margin-bottom: 7px; font-size: 17px; }
+
+    .formula {
+      padding: 12px;
+      border-radius: 8px;
+      background: #f2f0ea;
+      color: #434843;
+      font: 12px/1.65 Consolas, monospace;
+      white-space: pre-wrap;
+    }
+    .metric-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+    .metric { padding: 10px; border: 1px solid var(--line); border-radius: 8px; background: white; }
+    .metric span { display: block; color: var(--muted); font-size: 11px; }
+    .metric strong { display: block; margin-top: 4px; font-size: 18px; font-variant-numeric: tabular-nums; }
+    .metric.featured { border-color: #adcdbd; background: #eff7f3; }
+
+    .messages { display: grid; gap: 7px; margin: 12px 0; }
+    .message { padding: 9px 10px; border-radius: 7px; font-size: 12px; line-height: 1.5; }
+    .message.ok { background: #eaf4ed; color: #315b42; }
+    .message.warn { background: #fff2df; color: var(--warn); }
+    .message.error { background: #fbe9e7; color: var(--danger); }
+
+    .legend { display: flex; gap: 12px; color: var(--muted); font-size: 11px; }
+    .legend i { display: inline-block; width: 18px; height: 3px; margin-right: 5px; vertical-align: middle; }
+    .legend .three { background: var(--red); }
+    .legend .five { background: var(--blue); }
+
+    @media (min-width: 1181px) {
+      .app { height: 100dvh; min-height: 0; overflow: hidden; }
+      .panel, .workspace { height: 100%; min-height: 0; }
+      .viewport { min-height: 0; }
+    }
+
+    @media (max-width: 1180px) {
+      .app { grid-template-columns: 300px 1fr; }
+      .results-panel { grid-column: 1 / -1; border-left: 0; border-top: 1px solid var(--line); }
+    }
+  </style>
+</head>
+<body>
+  <main class="app">
+    <aside class="panel">
+      <h1>五节苗八点标注</h1>
+      <p class="subtle">标注三节苗四个锚点与五节苗四个牛头节点，自动计算 alpha、beta。</p>
+      <div class="privacy">图像仅由当前浏览器读取，不会上传到服务器。导出的 JSON 也不包含图像内容。</div>
+
+      <h2>图纸与记录</h2>
+      <div class="button-row">
+        <button id="imageFolderButton" class="button primary" type="button">选择图纸文件夹（最新优先）</button>
+        <label class="file-button" for="imageInput">单独选择图纸</label>
+        <label class="file-button" for="annotationInput">载入标注 JSON</label>
+        <button id="demoButton" class="button" type="button">载入演示图</button>
+      </div>
+      <input id="imageInput" type="file" accept="image/*" />
+      <input id="annotationInput" type="file" accept="application/json,.json" />
+      <input id="reviewQueueInput" type="file" accept="application/json,.json" multiple />
+      <div class="drawing-picker">
+        <select id="imageFolderSelect" disabled>
+          <option value="">请先选择“纵剖面图”文件夹</option>
+        </select>
+        <div id="imageFolderStatus" class="status">选择文件夹后，图纸会按文件时间从新到旧排列。</div>
+      </div>
+      <div class="review-queue">
+        <div class="button-row">
+          <label class="file-button" for="reviewQueueInput">选择待复核 JSON（可多选）</label>
+          <button id="nextReviewButton" class="button" type="button" disabled>下一条</button>
+        </div>
+        <div id="reviewQueueStatus" class="status">尚未建立待复核队列。</div>
+      </div>
+
+      <div class="field"><label for="bridgeId">桥梁 ID</label><input id="bridgeId" placeholder="例如：79" /></div>
+      <div class="field"><label for="bridgeName">桥名</label><input id="bridgeName" placeholder="例如：惠风桥" /></div>
+      <div class="field"><label for="sourceGroupId">谱系分组 ID（自动生成，可修改）</label><input id="sourceGroupId" placeholder="迁建、重建或共享图纸来源时填写同一值" /></div>
+      <div class="field"><label for="spanCount">总跨数</label><input id="spanCount" type="number" min="1" step="1" value="1" /></div>
+      <div class="field"><label for="spanIndex">当前跨序号（从左到右）</label><input id="spanIndex" type="number" min="1" step="1" value="1" /></div>
+      <div class="field"><label for="spanM">当前跨净跨（m）</label><input id="spanM" type="number" min="0.01" step="0.01" placeholder="例如：18.60；不要填全桥总长" /></div>
+      <div class="field"><label for="drawingUrl">图纸来源 URL</label><input id="drawingUrl" placeholder="保留原始来源" /></div>
+      <div class="field"><label for="annotator">标注者</label><input id="annotator" /></div>
+      <div class="field">
+        <label for="quality">图纸质量</label>
+        <select id="quality">
+          <option value="high">高：节点和轴线清晰</option>
+          <option value="medium" selected>中：可辨识，存在少量歧义</option>
+          <option value="low">低：仅供复核，不进入训练</option>
+        </select>
+      </div>
+      <div class="field">
+        <label>图纸缺陷（可多选，存在任一缺陷即不进入标准训练）</label>
+        <div id="defectsList" class="defects-list">
+          <label><input type="checkbox" value="node_unclear" />节点不可辨识</label>
+          <label><input type="checkbox" value="member_missing" />构件缺失/遮挡</label>
+          <label><input type="checkbox" value="geometry_conflict" />几何冲突（线与点不匹配）</label>
+          <label><input type="checkbox" value="drawing_distortion" />图纸变形/比例失真</label>
+          <label><input type="checkbox" value="scale_unknown" />比例/尺寸信息缺失</label>
+          <label><input type="checkbox" value="repair_reconstruction" />维修/重建痕迹</label>
+        </div>
+      </div>
+      <div class="field"><label for="notes">备注</label><textarea id="notes" placeholder="维修、变形、图纸冲突或排除原因"></textarea></div>
+
+      <h2>点选顺序</h2>
+      <div id="pointList" class="point-list"></div>
+      <div class="button-row" style="margin-top:12px">
+        <button id="undoButton" class="button">撤销</button>
+        <button id="resetButton" class="button">清空八点</button>
+        <button id="nextSpanButton" class="button">下一跨</button>
+        <button id="demoPointsButton" class="button" disabled>填入演示八点</button>
+      </div>
+    </aside>
+
+    <section class="workspace">
+      <div class="toolbar">
+        <div>
+          <strong id="currentPrompt">请先选择图纸</strong>
+          <div id="imageMeta" class="status">尚未加载本地图像</div>
+        </div>
+        <div class="toolbar-actions">
+          <div class="button-row">
+            <button id="panButton" class="button" type="button" aria-pressed="false" title="切换拖动画布模式（快捷键 P）">拖动：关</button>
+            <button id="labelButton" class="button" type="button" aria-pressed="false" title="显示或隐藏节点字母（快捷键 L）">显示字母</button>
+            <button id="zoomOutButton" class="button" type="button" title="缩小">－</button>
+            <button id="fitButton" class="button" type="button">适合窗口</button>
+            <button id="actualButton" class="button" type="button">1:1</button>
+            <button id="zoomInButton" class="button" type="button" title="放大">＋</button>
+          </div>
+          <div class="interaction-hint">空格拖动 · 中键拖动 · Ctrl+滚轮缩放 · P 切换拖动 · L 显示字母</div>
+        </div>
+      </div>
+      <div id="viewport" class="viewport">
+        <div id="canvasShell" class="canvas-shell" hidden><canvas id="canvas"></canvas></div>
+        <div id="emptyState" class="empty-state"><div class="empty-card"><strong>选择一张纵剖面图或立面图</strong><span>然后依次点击左侧列出的八个点</span></div></div>
+      </div>
+    </section>
+
+    <aside class="panel results-panel">
+      <h1>比例结果</h1>
+      <p class="subtle">原始点保留；外斜弦按三节苗方向固定角度，厚度造成的起点抬高单独分离。</p>
+      <div class="formula">alpha_L = bridge-axis decomposition(Q1-A, B-A)
+alpha_R = bridge-axis decomposition(Q4-D, C-D)
+alpha = (alpha_L + alpha_R) / 2
+beta  = (beta_L  + beta_R)  / 2
+
+约束：0 &lt; alpha &lt; 1
+      0 &lt; beta &lt; 0.5</div>
+
+      <h2>测量值</h2>
+      <div class="metric-grid">
+        <div class="metric"><span>alpha_L</span><strong id="alphaLeft">—</strong></div>
+        <div class="metric"><span>alpha_R</span><strong id="alphaRight">—</strong></div>
+        <div class="metric"><span>beta_L</span><strong id="betaLeft">—</strong></div>
+        <div class="metric"><span>beta_R</span><strong id="betaRight">—</strong></div>
+        <div class="metric featured"><span>alpha 平均</span><strong id="alphaMean">—</strong></div>
+        <div class="metric featured"><span>beta 平均</span><strong id="betaMean">—</strong></div>
+        <div class="metric"><span>alpha 对称误差</span><strong id="alphaError">—</strong></div>
+        <div class="metric"><span>beta 对称误差</span><strong id="betaError">—</strong></div>
+        <div class="metric"><span>左起点抬高 / 跨长</span><strong id="outerOffsetLeft">—</strong></div>
+        <div class="metric"><span>右起点抬高 / 跨长</span><strong id="outerOffsetRight">—</strong></div>
+      </div>
+      <div id="messages" class="messages"><div class="message warn">完成八点标注后自动计算。</div></div>
+
+      <h2>导出</h2>
+      <div class="button-row">
+        <button id="exportFolderButton" class="button">选择导出文件夹</button>
+        <button id="jsonButton" class="button primary" disabled>导出 JSON</button>
+        <button id="csvButton" class="button" disabled>导出 CSV</button>
+      </div>
+      <p id="exportFolderStatus" class="subtle">尚未指定文件夹，将使用浏览器默认下载目录。</p>
+      <p class="subtle">JSON 用于复核与恢复标注；CSV 每张图输出一行，可直接汇总为训练数据。</p>
+
+      <h2>基线</h2>
+      <p class="subtle">当前系统的临时规则为 <strong>alpha = 0.666667</strong>、<strong>beta = 0.250000</strong>。试验数据应先判断历史桥比例变化是否明显高于标注误差。</p>
+      <div class="legend"><span><i class="three"></i>三节苗 A-B-C-D</span><span><i class="five"></i>五节苗 Q1-Q4</span></div>
+    </aside>
+  </main>
+
+  <script>
+    'use strict';
+
+    const POINT_ORDER = [
+      { key: 'A', label: '左拱脚', color: '#b74d3b' },
+      { key: 'B', label: '三节苗左牛头', color: '#b74d3b' },
+      { key: 'C', label: '三节苗右牛头', color: '#b74d3b' },
+      { key: 'D', label: '右拱脚', color: '#b74d3b' },
+      { key: 'Q1', label: '五节苗外左牛头', color: '#286a9f' },
+      { key: 'Q2', label: '五节苗内左牛头', color: '#286a9f' },
+      { key: 'Q3', label: '五节苗内右牛头', color: '#286a9f' },
+      { key: 'Q4', label: '五节苗外右牛头', color: '#286a9f' },
+    ];
+
+    const elements = Object.fromEntries([
+      'imageInput', 'imageFolderButton', 'imageFolderSelect', 'imageFolderStatus', 'annotationInput', 'reviewQueueInput', 'nextReviewButton', 'reviewQueueStatus', 'demoButton', 'bridgeId', 'bridgeName', 'sourceGroupId', 'spanCount', 'spanIndex', 'spanM', 'drawingUrl', 'annotator', 'quality', 'notes', 'defectsList',
+      'pointList', 'undoButton', 'resetButton', 'nextSpanButton', 'demoPointsButton', 'panButton', 'labelButton', 'zoomOutButton', 'fitButton', 'actualButton', 'zoomInButton',
+      'viewport', 'canvasShell', 'canvas', 'emptyState', 'currentPrompt', 'imageMeta', 'messages',
+      'alphaLeft', 'alphaRight', 'betaLeft', 'betaRight', 'alphaMean', 'betaMean', 'alphaError', 'betaError',
+      'outerOffsetLeft', 'outerOffsetRight',
+      'exportFolderButton', 'exportFolderStatus', 'jsonButton', 'csvButton',
+    ].map(id => [id, document.getElementById(id)]));
+
+    const ctx = elements.canvas.getContext('2d');
+    const image = new Image();
+    let imageFileName = '';
+    let loadedImageFileName = '';
+    let sourceImageWidth = 0;
+    let sourceImageHeight = 0;
+    let annotationFileName = '';
+    let imageObjectUrl = '';
+    let imageDirectoryHandle = null;
+    let imageDirectoryFiles = [];
+    let exportDirectoryHandle = null;
+    let points = {};
+    let placementHistory = [];
+    let activeIndex = 0;
+    let zoom = 1;
+    let measurement = null;
+    let panMode = false;
+    let spacePan = false;
+    let panGesture = null;
+    let suppressNextCanvasClick = false;
+    let showPointLabels = false;
+    let reviewQueue = [];
+    let reviewQueueIndex = -1;
+
+    function hasMatchingImage() {
+      return Boolean(image.naturalWidth && loadedImageFileName && loadedImageFileName === imageFileName);
+    }
+
+    function showImagePlaceholder(title, detail) {
+      elements.canvasShell.hidden = true;
+      elements.emptyState.hidden = false;
+      elements.emptyState.querySelector('strong').textContent = title;
+      elements.emptyState.querySelector('span').textContent = detail;
+    }
+
+    function updateReviewQueueStatus() {
+      if (!reviewQueue.length || reviewQueueIndex < 0) {
+        elements.reviewQueueStatus.textContent = '尚未建立待复核队列。';
+        elements.nextReviewButton.disabled = true;
+        return;
+      }
+      const current = reviewQueue[reviewQueueIndex];
+      elements.reviewQueueStatus.textContent = `${reviewQueueIndex + 1}/${reviewQueue.length} · ${current.name}`;
+      elements.nextReviewButton.disabled = reviewQueueIndex >= reviewQueue.length - 1;
+    }
+
+    function renderPointList() {
+      elements.pointList.innerHTML = '';
+      POINT_ORDER.forEach((item, index) => {
+        const button = document.createElement('button');
+        const point = points[item.key];
+        button.type = 'button';
+        button.className = `point-item${index === activeIndex ? ' active' : ''}${point ? ' done' : ''}`;
+        button.innerHTML = `<span class="point-key">${item.key}</span><span class="point-name">${item.label}</span><span class="point-coordinate">${point ? `${point.x.toFixed(1)}, ${point.y.toFixed(1)}` : '未标'}</span>`;
+        button.addEventListener('click', () => {
+          activeIndex = index;
+          renderPointList();
+          updatePrompt();
+          draw();
+        });
+        elements.pointList.appendChild(button);
+      });
+    }
+
+    function updatePrompt() {
+      if (!hasMatchingImage()) {
+        elements.currentPrompt.textContent = imageFileName ? `请加载对应原图：${imageFileName}` : '请先选择图纸';
+        return;
+      }
+      if (activeIndex >= POINT_ORDER.length) {
+        elements.currentPrompt.textContent = `第 ${elements.spanIndex.value || 1}/${elements.spanCount.value || 1} 跨八点已完成，可复核或导出`;
+        return;
+      }
+      const item = POINT_ORDER[activeIndex];
+      elements.currentPrompt.textContent = `当前点：${item.key} · ${item.label}`;
+    }
+
+    function zoomAnchor(anchor) {
+      if (anchor) return anchor;
+      const rect = elements.viewport.getBoundingClientRect();
+      return { clientX: rect.left + rect.width / 2, clientY: rect.top + rect.height / 2 };
+    }
+
+    function setZoom(nextZoom, anchor = null) {
+      if (!hasMatchingImage()) return;
+      const next = Math.min(4, Math.max(0.08, nextZoom));
+      if (Math.abs(next - zoom) < 0.0001) return;
+      const focus = zoomAnchor(anchor);
+      const oldRect = elements.canvas.getBoundingClientRect();
+      const imageX = oldRect.width ? (focus.clientX - oldRect.left) / oldRect.width : 0.5;
+      const imageY = oldRect.height ? (focus.clientY - oldRect.top) / oldRect.height : 0.5;
+      zoom = next;
+      elements.canvas.style.width = `${Math.round(image.naturalWidth * zoom)}px`;
+      elements.canvas.style.height = `${Math.round(image.naturalHeight * zoom)}px`;
+      const newRect = elements.canvas.getBoundingClientRect();
+      elements.viewport.scrollLeft += newRect.left + imageX * newRect.width - focus.clientX;
+      elements.viewport.scrollTop += newRect.top + imageY * newRect.height - focus.clientY;
+      elements.imageMeta.textContent = `${imageFileName} · ${image.naturalWidth}×${image.naturalHeight}px · ${Math.round(zoom * 100)}%`;
+      draw();
+    }
+
+    function fitImage() {
+      if (!hasMatchingImage()) return;
+      const availableWidth = Math.max(200, elements.viewport.clientWidth - 56);
+      const availableHeight = Math.max(200, elements.viewport.clientHeight - 56);
+      const fittedZoom = Math.min(1, availableWidth / image.naturalWidth, availableHeight / image.naturalHeight);
+      if (Math.abs(fittedZoom - zoom) < 0.0001) {
+        elements.imageMeta.textContent = `${imageFileName} · ${image.naturalWidth}×${image.naturalHeight}px · ${Math.round(zoom * 100)}%`;
+        draw();
+      } else {
+        setZoom(fittedZoom);
+      }
+      requestAnimationFrame(() => {
+        elements.viewport.scrollLeft = Math.max(0, (elements.viewport.scrollWidth - elements.viewport.clientWidth) / 2);
+        elements.viewport.scrollTop = Math.max(0, (elements.viewport.scrollHeight - elements.viewport.clientHeight) / 2);
+      });
+    }
+
+    function updateInteractionMode() {
+      elements.viewport.classList.toggle('pan-enabled', panMode);
+      elements.viewport.classList.toggle('space-pan', spacePan);
+      elements.panButton.setAttribute('aria-pressed', String(panMode));
+      elements.panButton.textContent = `拖动：${panMode ? '开' : '关'}`;
+      elements.labelButton.setAttribute('aria-pressed', String(showPointLabels));
+      elements.labelButton.textContent = showPointLabels ? '隐藏字母' : '显示字母';
+    }
+
+    function drawPath(path, color, dashed = false) {
+      const available = path.filter(Boolean);
+      if (available.length < 2) return;
+      ctx.save();
+      ctx.beginPath();
+      ctx.lineWidth = Math.max(2, image.naturalWidth / 800);
+      ctx.strokeStyle = color;
+      ctx.setLineDash(dashed ? [10, 8] : []);
+      available.forEach((point, index) => {
+        if (index === 0) ctx.moveTo(point.x, point.y);
+        else ctx.lineTo(point.x, point.y);
+      });
+      ctx.stroke();
+      ctx.restore();
+    }
+
+    function drawPolyline(keys, color, dashed = false) {
+      drawPath(keys.map(key => points[key]), color, dashed);
+    }
+
+    function draw() {
+      if (!hasMatchingImage()) return;
+      ctx.clearRect(0, 0, elements.canvas.width, elements.canvas.height);
+      ctx.drawImage(image, 0, 0);
+      drawPolyline(['A', 'B', 'C', 'D'], '#b74d3b');
+      if (['A', 'B', 'C', 'D', 'Q1', 'Q4'].every(key => points[key])) {
+        try {
+          const leftFit = parallelChordFit(points.Q1, points.A, points.B, points.B, points.C, points.A, points.D);
+          const rightFit = parallelChordFit(points.Q4, points.D, points.C, points.B, points.C, points.A, points.D);
+          const leftStart = {
+            x: points.Q1.x - leftFit.fraction * (points.B.x - points.A.x),
+            y: points.Q1.y - leftFit.fraction * (points.B.y - points.A.y),
+          };
+          const rightStart = {
+            x: points.Q4.x - rightFit.fraction * (points.C.x - points.D.x),
+            y: points.Q4.y - rightFit.fraction * (points.C.y - points.D.y),
+          };
+          drawPath([leftStart, points.Q1, points.Q2, points.Q3, points.Q4, rightStart], '#286a9f');
+          drawPath([points.A, leftStart], '#6f8fa8', true);
+          drawPath([points.D, rightStart], '#6f8fa8', true);
+        } catch (error) {
+          drawPolyline(['A', 'Q1', 'Q2', 'Q3', 'Q4', 'D'], '#286a9f');
+        }
+      } else {
+        drawPolyline(['A', 'Q1', 'Q2', 'Q3', 'Q4', 'D'], '#286a9f');
+      }
+
+      const radius = Math.max(4 / zoom, Math.min(image.naturalWidth / 420, 8 / zoom));
+      POINT_ORDER.forEach((item, index) => {
+        const point = points[item.key];
+        if (!point) return;
+        ctx.save();
+        ctx.beginPath();
+        ctx.arc(point.x, point.y, radius, 0, Math.PI * 2);
+        ctx.fillStyle = item.color;
+        ctx.fill();
+        ctx.lineWidth = Math.max(1 / zoom, radius / 3);
+        ctx.strokeStyle = '#fff';
+        ctx.stroke();
+        if (showPointLabels && index !== activeIndex) drawPointLabel(item, point, radius);
+        ctx.restore();
+      });
+    }
+
+    function drawPointLabel(item, point, radius) {
+      const directions = {
+        A: [-1, 1], B: [-1, -1], C: [1, -1], D: [1, 1],
+        Q1: [-1, -1], Q2: [-1, 1], Q3: [1, 1], Q4: [1, -1],
+      };
+      const [dx, dy] = directions[item.key] || [1, -1];
+      const gap = radius + 9 / zoom;
+      const labelX = point.x + dx * gap;
+      const labelY = point.y + dy * gap;
+      ctx.beginPath();
+      ctx.moveTo(point.x + dx * radius * 0.8, point.y + dy * radius * 0.8);
+      ctx.lineTo(point.x + dx * (gap - 2 / zoom), point.y + dy * (gap - 2 / zoom));
+      ctx.strokeStyle = 'rgba(31,40,35,.72)';
+      ctx.lineWidth = Math.max(0.8 / zoom, 0.5);
+      ctx.stroke();
+      ctx.font = `bold ${Math.max(10 / zoom, 4)}px Microsoft YaHei`;
+      ctx.textAlign = dx < 0 ? 'right' : 'left';
+      ctx.textBaseline = dy < 0 ? 'bottom' : 'top';
+      ctx.lineWidth = Math.max(2.5 / zoom, 1);
+      ctx.strokeStyle = 'rgba(255,255,255,.96)';
+      ctx.strokeText(item.key, labelX, labelY);
+      ctx.fillStyle = '#1f2823';
+      ctx.fillText(item.key, labelX, labelY);
+    }
+
+    function projection(point, start, end) {
+      const dx = end.x - start.x;
+      const dy = end.y - start.y;
+      const lengthSquared = dx * dx + dy * dy;
+      if (lengthSquared <= 1e-12) throw new Error('三节苗锚点存在重合，无法计算比例。');
+      const fraction = ((point.x - start.x) * dx + (point.y - start.y) * dy) / lengthSquared;
+      const projected = { x: start.x + fraction * dx, y: start.y + fraction * dy };
+      const distance = Math.hypot(point.x - projected.x, point.y - projected.y);
+      return { fraction, normalizedDistance: distance / Math.sqrt(lengthSquared) };
+    }
+
+    function parallelChordFit(point, start, end, axisStart, axisEnd, spanStart, spanEnd) {
+      const axisDx = axisEnd.x - axisStart.x;
+      const axisDy = axisEnd.y - axisStart.y;
+      const axisLength = Math.hypot(axisDx, axisDy);
+      if (axisLength <= 1e-12) throw new Error('B、C 重合，无法定义桥轴方向。');
+      const ux = axisDx / axisLength;
+      const uy = axisDy / axisLength;
+      const chordDx = end.x - start.x;
+      const chordDy = end.y - start.y;
+      const longitudinalChord = chordDx * ux + chordDy * uy;
+      if (Math.abs(longitudinalChord) <= 1e-12) throw new Error('三节苗斜弦缺少桥轴方向分量。');
+
+      const pointDx = point.x - start.x;
+      const pointDy = point.y - start.y;
+      const fraction = (pointDx * ux + pointDy * uy) / longitudinalChord;
+      const residualX = pointDx - fraction * chordDx;
+      const residualY = pointDy - fraction * chordDy;
+      const signedStartOffset = residualX * uy - residualY * ux;
+
+      const spanDx = spanEnd.x - spanStart.x;
+      const spanDy = spanEnd.y - spanStart.y;
+      const longitudinalSpan = Math.abs(spanDx * ux + spanDy * uy);
+      if (longitudinalSpan <= 1e-12) throw new Error('拱脚连线缺少桥轴方向分量。');
+      const legacyProjection = projection(point, start, end);
+      return {
+        fraction,
+        normalizedStartOffset: signedStartOffset / longitudinalSpan,
+        legacyProjection,
+      };
+    }
+
+    function calculateMeasurement() {
+      if (!POINT_ORDER.every(item => points[item.key])) return null;
+      const alphaLeft = parallelChordFit(points.Q1, points.A, points.B, points.B, points.C, points.A, points.D);
+      const alphaRight = parallelChordFit(points.Q4, points.D, points.C, points.B, points.C, points.A, points.D);
+      const betaLeft = projection(points.Q2, points.B, points.C);
+      const betaRight = projection(points.Q3, points.C, points.B);
+      const alpha = (alphaLeft.fraction + alphaRight.fraction) / 2;
+      const beta = (betaLeft.fraction + betaRight.fraction) / 2;
+      return {
+        alpha_left: alphaLeft.fraction,
+        alpha_right: alphaRight.fraction,
+        beta_left: betaLeft.fraction,
+        beta_right: betaRight.fraction,
+        alpha,
+        beta,
+        alpha_symmetry_error: Math.abs(alphaLeft.fraction - alphaRight.fraction),
+        beta_symmetry_error: Math.abs(betaLeft.fraction - betaRight.fraction),
+        alpha_legacy_projection_left: alphaLeft.legacyProjection.fraction,
+        alpha_legacy_projection_right: alphaRight.legacyProjection.fraction,
+        outer_start_offset_left_normalized: alphaLeft.normalizedStartOffset,
+        outer_start_offset_right_normalized: alphaRight.normalizedStartOffset,
+        max_normalized_projection_error: Math.max(alphaLeft.legacyProjection.normalizedDistance, alphaRight.legacyProjection.normalizedDistance, betaLeft.normalizedDistance, betaRight.normalizedDistance),
+      };
+    }
+
+    function showValue(id, value) {
+      elements[id].textContent = Number.isFinite(value) ? value.toFixed(6) : '—';
+    }
+
+    function updateResults() {
+      let calculationError = '';
+      try {
+        measurement = calculateMeasurement();
+      } catch (error) {
+        measurement = null;
+        calculationError = error.message;
+      }
+
+      const ids = ['alphaLeft', 'alphaRight', 'betaLeft', 'betaRight', 'alphaMean', 'betaMean', 'alphaError', 'betaError', 'outerOffsetLeft', 'outerOffsetRight'];
+      if (!measurement) {
+        ids.forEach(id => showValue(id, NaN));
+        elements.messages.innerHTML = calculationError
+          ? `<div class="message error">${calculationError}</div>`
+          : '<div class="message warn">完成八点标注后自动计算。</div>';
+        elements.jsonButton.disabled = true;
+        elements.csvButton.disabled = true;
+        return;
+      }
+
+      showValue('alphaLeft', measurement.alpha_left);
+      showValue('alphaRight', measurement.alpha_right);
+      showValue('betaLeft', measurement.beta_left);
+      showValue('betaRight', measurement.beta_right);
+      showValue('alphaMean', measurement.alpha);
+      showValue('betaMean', measurement.beta);
+      showValue('alphaError', measurement.alpha_symmetry_error);
+      showValue('betaError', measurement.beta_symmetry_error);
+      showValue('outerOffsetLeft', measurement.outer_start_offset_left_normalized);
+      showValue('outerOffsetRight', measurement.outer_start_offset_right_normalized);
+
+      const messages = [];
+      if (!(measurement.alpha > 0 && measurement.alpha < 1)) messages.push(['error', 'alpha 超出 (0, 1)，请检查外侧节点和点选顺序。']);
+      if (!(measurement.beta > 0 && measurement.beta < 0.5)) messages.push(['error', 'beta 超出 (0, 0.5)，请检查内侧节点和点选顺序。']);
+      if (measurement.max_normalized_projection_error > 0.015) messages.push(['warn', '节点与三节苗轴线偏移较大；已作为起点抬高/构件间距保留，请结合图纸复核。']);
+      if (measurement.alpha_symmetry_error > 0.03) messages.push(['warn', '检测到较明显的 alpha 历史不对称；请按图纸真实位置标注，预处理会取左右均值生成对称设计目标。']);
+      if (measurement.beta_symmetry_error > 0.03) messages.push(['warn', '检测到较明显的 beta 历史不对称；请按图纸真实位置标注，预处理会取左右均值生成对称设计目标。']);
+      if (!messages.length) messages.push(['ok', '已固定五节苗外斜弦角度并分离起点抬高量，可以导出。']);
+      elements.messages.innerHTML = messages.map(([level, text]) => `<div class="message ${level}">${text}</div>`).join('');
+      elements.jsonButton.disabled = false;
+      elements.csvButton.disabled = false;
+    }
+
+    function refresh() {
+      renderPointList();
+      updatePrompt();
+      draw();
+      updateResults();
+    }
+
+    function resetPoints() {
+      points = {};
+      placementHistory = [];
+      activeIndex = 0;
+      refresh();
+    }
+
+    function loadImageSource(src, fileName, isDemo = false, preservePoints = false) {
+      imageFileName = fileName;
+      elements.demoPointsButton.disabled = !isDemo;
+      image.onload = () => {
+        loadedImageFileName = fileName;
+        sourceImageWidth = image.naturalWidth;
+        sourceImageHeight = image.naturalHeight;
+        elements.canvas.width = image.naturalWidth;
+        elements.canvas.height = image.naturalHeight;
+        elements.canvasShell.hidden = false;
+        elements.emptyState.hidden = true;
+        if (preservePoints) refresh();
+        else resetPoints();
+        fitImage();
+        draw();
+        if (preservePoints) {
+          elements.messages.innerHTML = '<div class="message ok">原图已匹配，JSON 中的八点已保留，可直接选择左侧节点进行复核。</div>';
+        }
+      };
+      image.src = src;
+    }
+
+    function isImageFile(file) {
+      return file.type.startsWith('image/') || /\.(?:avif|bmp|gif|jpe?g|png|svg|webp)$/i.test(file.name);
+    }
+
+    function formatFileTime(timestamp) {
+      if (!Number.isFinite(timestamp) || timestamp <= 0) return '时间未知';
+      return new Intl.DateTimeFormat('zh-CN', {
+        year: 'numeric', month: '2-digit', day: '2-digit',
+        hour: '2-digit', minute: '2-digit', hour12: false,
+      }).format(new Date(timestamp));
+    }
+
+    async function loadLocalImageFile(file) {
+      if (imageObjectUrl) URL.revokeObjectURL(imageObjectUrl);
+      imageObjectUrl = URL.createObjectURL(file);
+      const attachingImportedImage = Boolean(annotationFileName) && imageFileName === file.name;
+      if (!attachingImportedImage) annotationFileName = '';
+      if (!attachingImportedImage) {
+        elements.bridgeId.value = '';
+        elements.bridgeName.value = bridgeNameFromImageFile(file.name);
+        elements.sourceGroupId.value = sourceGroupFromImageFile(file.name);
+        elements.spanCount.value = '1';
+        elements.spanIndex.value = '1';
+        elements.spanM.value = '';
+        elements.drawingUrl.value = '';
+        setDefects([]);
+        elements.notes.value = '';
+      } else {
+        if (!elements.bridgeName.value.trim() || isDemoBridgeName(elements.bridgeName.value)) {
+          elements.bridgeName.value = bridgeNameFromImageFile(file.name);
+        }
+        if (!elements.sourceGroupId.value.trim()) elements.sourceGroupId.value = sourceGroupFromImageFile(file.name);
+      }
+      if (elements.notes.value.trim() === '内置演示图，不属于研究数据。') elements.notes.value = '';
+      if (imageDirectoryFiles.some(candidate => candidate.name === file.name)) {
+        elements.imageFolderSelect.value = file.name;
+      }
+      loadImageSource(imageObjectUrl, file.name, false, attachingImportedImage);
+    }
+
+    function renderImageDirectoryFiles() {
+      elements.imageFolderSelect.innerHTML = '';
+      const placeholder = document.createElement('option');
+      placeholder.value = '';
+      placeholder.textContent = imageDirectoryFiles.length ? '请选择图纸（最新的在最上面）' : '文件夹内没有可识别的图像';
+      elements.imageFolderSelect.appendChild(placeholder);
+      imageDirectoryFiles.forEach(file => {
+        const option = document.createElement('option');
+        option.value = file.name;
+        option.textContent = `${formatFileTime(file.lastModified)} · ${file.name}`;
+        elements.imageFolderSelect.appendChild(option);
+      });
+      elements.imageFolderSelect.disabled = imageDirectoryFiles.length === 0;
+      elements.imageFolderSelect.value = '';
+    }
+
+    async function chooseImageDirectory() {
+      if (!window.showDirectoryPicker) throw new Error('当前浏览器不支持按时间读取图纸文件夹，请使用 Chrome 或 Edge');
+      imageDirectoryHandle = await window.showDirectoryPicker({
+        id: 'five-miao-drawings',
+        mode: 'read',
+        startIn: 'pictures',
+      });
+      const files = [];
+      for await (const entry of imageDirectoryHandle.values()) {
+        if (entry.kind !== 'file') continue;
+        const file = await entry.getFile();
+        if (isImageFile(file)) files.push(file);
+      }
+      imageDirectoryFiles = files.sort((left, right) =>
+        right.lastModified - left.lastModified || right.name.localeCompare(left.name, 'zh-CN', { numeric: true })
+      );
+      renderImageDirectoryFiles();
+      elements.imageFolderStatus.textContent = imageDirectoryFiles.length
+        ? `${imageDirectoryHandle.name} · ${imageDirectoryFiles.length} 张图纸 · 文件时间从新到旧`
+        : `${imageDirectoryHandle.name} · 未找到图像文件`;
+
+      const matchingFile = annotationFileName
+        ? imageDirectoryFiles.find(file => file.name === imageFileName)
+        : null;
+      if (matchingFile) await loadLocalImageFile(matchingFile);
+    }
+
+    function loadDemoImage() {
+      const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="600" viewBox="0 0 1200 600">
+        <rect width="1200" height="600" fill="#fffdf8"/>
+        <text x="54" y="56" font-family="Microsoft YaHei" font-size="24" fill="#303730">三节苗 × 五节苗演示图（alpha=2/3, beta=1/4）</text>
+        <path d="M100 500 L433.333 160 L766.667 160 L1100 500" fill="none" stroke="#b74d3b" stroke-width="10"/>
+        <path d="M100 500 L322.222 273.333 L516.667 160 L683.333 160 L877.778 273.333 L1100 500" fill="none" stroke="#286a9f" stroke-width="7"/>
+        <g fill="#b74d3b" font-family="Consolas" font-size="22" font-weight="700">
+          <circle cx="100" cy="500" r="10"/><text x="75" y="535">A</text>
+          <circle cx="433.333" cy="160" r="10"/><text x="410" y="140">B</text>
+          <circle cx="766.667" cy="160" r="10"/><text x="750" y="140">C</text>
+          <circle cx="1100" cy="500" r="10"/><text x="1090" y="535">D</text>
+        </g>
+        <g fill="#286a9f" font-family="Consolas" font-size="22" font-weight="700">
+          <circle cx="322.222" cy="273.333" r="9"/><text x="285" y="255">Q1</text>
+          <circle cx="516.667" cy="160" r="9"/><text x="495" y="140">Q2</text>
+          <circle cx="683.333" cy="160" r="9"/><text x="665" y="140">Q3</text>
+          <circle cx="877.778" cy="273.333" r="9"/><text x="890" y="255">Q4</text>
+        </g>
+      </svg>`;
+      elements.bridgeId.value = 'DEMO';
+      elements.bridgeName.value = '比例计算演示';
+      elements.sourceGroupId.value = '';
+      elements.spanCount.value = '1';
+      elements.spanIndex.value = '1';
+      elements.spanM.value = '15';
+      setDefects([]);
+      elements.notes.value = '内置演示图，不属于研究数据。';
+      annotationFileName = '';
+      loadImageSource(`data:image/svg+xml;charset=utf-8,${encodeURIComponent(svg)}`, 'demo_three_five_miao.svg', true);
+    }
+
+    function loadDemoPoints() {
+      if (imageFileName !== 'demo_three_five_miao.svg') return;
+      points = {
+        A: { x: 100, y: 500 },
+        B: { x: 433.333, y: 160 },
+        C: { x: 766.667, y: 160 },
+        D: { x: 1100, y: 500 },
+        Q1: { x: 322.222, y: 273.333 },
+        Q2: { x: 516.667, y: 160 },
+        Q3: { x: 683.333, y: 160 },
+        Q4: { x: 877.778, y: 273.333 },
+      };
+      placementHistory = POINT_ORDER.map(item => item.key);
+      activeIndex = POINT_ORDER.length;
+      refresh();
+    }
+
+    function spanMetadata() {
+      const spanCount = Number(elements.spanCount.value);
+      const spanIndex = Number(elements.spanIndex.value);
+      const spanText = elements.spanM.value.trim();
+      const spanM = spanText ? Number(spanText) : null;
+      if (!Number.isInteger(spanCount) || spanCount < 1) throw new Error('总跨数必须是大于等于 1 的整数');
+      if (!Number.isInteger(spanIndex) || spanIndex < 1 || spanIndex > spanCount) throw new Error(`当前跨序号必须在 1～${spanCount} 之间`);
+      if (spanM !== null && (!Number.isFinite(spanM) || spanM <= 0)) throw new Error('跨长必须是大于 0 的数值');
+      return { spanCount, spanIndex, spanM };
+    }
+
+    // 图纸缺陷：勾选集合 <-> 数组 的读写
+    const DEFECT_OPTIONS = ['node_unclear', 'member_missing', 'geometry_conflict', 'drawing_distortion', 'scale_unknown', 'repair_reconstruction'];
+
+    function selectedDefects() {
+      const boxes = Array.from(elements.defectsList.querySelectorAll('input[type="checkbox"]'));
+      return boxes.filter(box => box.checked).map(box => box.value);
+    }
+
+    function setDefects(values) {
+      const list = Array.isArray(values) ? values : [];
+      const allowed = new Set(list.filter(value => DEFECT_OPTIONS.includes(value)));
+      elements.defectsList.querySelectorAll('input[type="checkbox"]').forEach(box => {
+        box.checked = allowed.has(box.value);
+      });
+    }
+
+    function annotationPayload() {
+      if (!measurement) throw new Error('八点尚未完成');
+      const { spanCount, spanIndex, spanM } = spanMetadata();
+      return {
+        schema_version: 'five-miao-node-annotation-v1',
+        created_at: new Date().toISOString(),
+        source_image: {
+          file_name: imageFileName,
+          width_px: sourceImageWidth || image.naturalWidth,
+          height_px: sourceImageHeight || image.naturalHeight,
+          embedded: false,
+        },
+        bridge: {
+          bridge_id: elements.bridgeId.value.trim(),
+          bridge_name: elements.bridgeName.value.trim(),
+          source_group_id: elements.sourceGroupId.value.trim(),
+          span_count: spanCount,
+          span_m: spanM,
+          drawing_url: elements.drawingUrl.value.trim(),
+        },
+        span: {
+          index: spanIndex,
+          count: spanCount,
+          clear_span_m: spanM,
+          ordering: 'left-to-right-v1',
+        },
+        annotation: {
+          span_index: spanIndex,
+          annotator: elements.annotator.value.trim(),
+          quality: elements.quality.value,
+          defects: selectedDefects(),
+          notes: elements.notes.value.trim(),
+          node_definition: 'parallel-five-miao-chord-bridge-axis-v2',
+          ratio_definition: 'bridge-axis-parallel-chord-v2',
+          center_symmetry_target: true,
+          points: Object.fromEntries(POINT_ORDER.map(item => [item.key, {
+            x: Number(points[item.key].x.toFixed(3)),
+            y: Number(points[item.key].y.toFixed(3)),
+          }])),
+          ratios: Object.fromEntries(Object.entries(measurement).map(([key, value]) => [key, Number(value.toFixed(8))])),
+        },
+      };
+    }
+
+    function fileStem(fileName) {
+      return (fileName || '').replace(/^.*[\\/]/, '').replace(/\.[^.]+$/, '');
+    }
+
+    function annotationFileStem(fileName) {
+      return fileStem(fileName)
+        .replace(/_five_miao_nodes(?:\s*\(\d+\))?$/i, '')
+        .replace(/_span_\d+_of_\d+$/i, '');
+    }
+
+    function bridgeNameFromImageFile(fileName) {
+      const stem = fileStem(fileName)
+        .replace(/^\d+\./, '')
+        .replace(/(?:-纵剖.*|_页面_\d+.*)$/i, '');
+      const locationMatches = [...stem.matchAll(/(?:县|市)([^.\\/_-]*桥)/g)];
+      if (locationMatches.length) return locationMatches.at(-1)[1];
+      return stem.match(/([^.\\/_-]*桥)/)?.[1] || stem;
+    }
+
+    function sourceGroupFromImageFile(fileName) {
+      const sourceId = (fileName || '').replace(/^.*[\\/]/, '').match(/^(\d+)\./)?.[1];
+      return sourceId ? `drawing:${sourceId}` : `drawing:${bridgeNameFromImageFile(fileName)}`;
+    }
+
+    function isDemoBridgeId(value) {
+      return value.trim().toUpperCase() === 'DEMO';
+    }
+
+    function isDemoBridgeName(value) {
+      return value.trim() === '比例计算演示';
+    }
+
+    function inferredBridgeName(payload, importedFileName) {
+      const sourceFileName = payload.source_image?.file_name;
+      const sourceStem = fileStem(sourceFileName);
+      if (sourceStem && sourceStem !== 'demo_three_five_miao') return bridgeNameFromImageFile(sourceFileName);
+      const importedStem = annotationFileStem(importedFileName);
+      return importedStem && importedStem.toUpperCase() !== 'DEMO' ? importedStem : '';
+    }
+
+    function safeFileStem() {
+      const bridgeId = elements.bridgeId.value.trim();
+      const bridgeName = elements.bridgeName.value.trim();
+      const identity = (!isDemoBridgeId(bridgeId) && bridgeId)
+        || (!isDemoBridgeName(bridgeName) && bridgeName)
+        || fileStem(imageFileName)
+        || annotationFileStem(annotationFileName)
+        || 'bridge';
+      return identity.replace(/[\\/:*?"<>|\s]+/g, '_');
+    }
+
+    function exportFileStem() {
+      const { spanCount, spanIndex } = spanMetadata();
+      if (spanCount === 1) return safeFileStem();
+      const width = Math.max(2, String(spanCount).length);
+      return `${safeFileStem()}_span_${String(spanIndex).padStart(width, '0')}_of_${String(spanCount).padStart(width, '0')}`;
+    }
+
+    function spanSampleKey(payload) {
+      const identity = payload.bridge.bridge_id || payload.bridge.bridge_name || fileStem(payload.source_image.file_name);
+      const width = Math.max(2, String(payload.span.count).length);
+      return `${identity}:span-${String(payload.span.index).padStart(width, '0')}-of-${String(payload.span.count).padStart(width, '0')}`;
+    }
+
+    function browserDownload(content, fileName, type) {
+      const blob = new Blob([content], { type });
+      const url = URL.createObjectURL(blob);
+      const anchor = document.createElement('a');
+      anchor.href = url;
+      anchor.download = fileName;
+      document.body.appendChild(anchor);
+      anchor.click();
+      anchor.remove();
+      URL.revokeObjectURL(url);
+    }
+
+    async function directoryContainsFile(directory, fileName) {
+      try {
+        await directory.getFileHandle(fileName);
+        return true;
+      } catch (error) {
+        if (error.name === 'NotFoundError') return false;
+        throw error;
+      }
+    }
+
+    async function uniqueFileName(directory, requestedName) {
+      if (!(await directoryContainsFile(directory, requestedName))) return requestedName;
+      const dotIndex = requestedName.lastIndexOf('.');
+      const stem = dotIndex > 0 ? requestedName.slice(0, dotIndex) : requestedName;
+      const extension = dotIndex > 0 ? requestedName.slice(dotIndex) : '';
+      for (let index = 2; index < 1000; index += 1) {
+        const candidate = `${stem} (${index})${extension}`;
+        if (!(await directoryContainsFile(directory, candidate))) return candidate;
+      }
+      throw new Error('同名文件过多，请整理导出文件夹后重试');
+    }
+
+    async function saveExport(content, requestedName, type) {
+      if (!exportDirectoryHandle) {
+        browserDownload(content, requestedName, type);
+        return { fileName: requestedName, destination: '浏览器默认下载目录' };
+      }
+
+      let permission = await exportDirectoryHandle.queryPermission({ mode: 'readwrite' });
+      if (permission !== 'granted') {
+        permission = await exportDirectoryHandle.requestPermission({ mode: 'readwrite' });
+      }
+      if (permission !== 'granted') throw new Error('没有导出文件夹的写入权限');
+
+      const fileName = await uniqueFileName(exportDirectoryHandle, requestedName);
+      const fileHandle = await exportDirectoryHandle.getFileHandle(fileName, { create: true });
+      const writable = await fileHandle.createWritable();
+      await writable.write(new Blob([content], { type }));
+      await writable.close();
+      return { fileName, destination: exportDirectoryHandle.name };
+    }
+
+    async function chooseExportDirectory() {
+      if (!window.showDirectoryPicker) throw new Error('当前浏览器不支持指定导出文件夹，请使用 Chrome 或 Edge');
+      exportDirectoryHandle = await window.showDirectoryPicker({
+        id: 'five-miao-annotations',
+        mode: 'readwrite',
+        startIn: 'downloads',
+      });
+      elements.exportFolderStatus.textContent = `当前导出文件夹：${exportDirectoryHandle.name}`;
+    }
+
+    function csvCell(value) {
+      const text = value == null ? '' : String(value);
+      return /[",\n]/.test(text) ? `"${text.replaceAll('"', '""')}"` : text;
+    }
+
+    async function exportCsv() {
+      const payload = annotationPayload();
+      const row = {
+        schema_version: payload.schema_version,
+        created_at: payload.created_at,
+        bridge_id: payload.bridge.bridge_id,
+        bridge_name: payload.bridge.bridge_name,
+        source_group_id: payload.bridge.source_group_id,
+        span_count: payload.span.count,
+        span_index: payload.span.index,
+        sample_key: spanSampleKey(payload),
+        span_m: payload.bridge.span_m,
+        drawing_url: payload.bridge.drawing_url,
+        image_file_name: payload.source_image.file_name,
+        image_width_px: payload.source_image.width_px,
+        image_height_px: payload.source_image.height_px,
+        annotator: payload.annotation.annotator,
+        quality: payload.annotation.quality,
+        defects: (payload.annotation.defects || []).join(';'),
+        notes: payload.annotation.notes,
+      };
+      POINT_ORDER.forEach(item => {
+        row[`${item.key}_x_px`] = payload.annotation.points[item.key].x;
+        row[`${item.key}_y_px`] = payload.annotation.points[item.key].y;
+      });
+      Object.assign(row, payload.annotation.ratios);
+      const headers = Object.keys(row);
+      const csv = `${headers.map(csvCell).join(',')}\n${headers.map(key => csvCell(row[key])).join(',')}\n`;
+      return saveExport('\ufeff' + csv, `${exportFileStem()}_five_miao_nodes.csv`, 'text/csv;charset=utf-8');
+    }
+
+    elements.imageInput.addEventListener('change', async event => {
+      const file = event.target.files?.[0];
+      if (!file) return;
+      try {
+        await loadLocalImageFile(file);
+      } catch (error) {
+        elements.messages.innerHTML = `<div class="message error">载入图纸失败：${error.message}</div>`;
+      } finally {
+        event.target.value = '';
+      }
+    });
+
+    elements.imageFolderButton.addEventListener('click', async () => {
+      try {
+        await chooseImageDirectory();
+      } catch (error) {
+        if (error.name === 'AbortError') return;
+        elements.messages.innerHTML = `<div class="message error">读取图纸文件夹失败：${error.message}</div>`;
+      }
+    });
+
+    elements.imageFolderSelect.addEventListener('change', async event => {
+      const file = imageDirectoryFiles.find(candidate => candidate.name === event.target.value);
+      if (!file) return;
+      try {
+        await loadLocalImageFile(file);
+      } catch (error) {
+        elements.messages.innerHTML = `<div class="message error">载入图纸失败：${error.message}</div>`;
+      }
+    });
+
+    elements.demoButton.addEventListener('click', loadDemoImage);
+    elements.demoPointsButton.addEventListener('click', loadDemoPoints);
+
+    async function loadAnnotationFile(file) {
+      const payload = JSON.parse(await file.text());
+      if (payload.schema_version !== 'five-miao-node-annotation-v1') throw new Error('不支持的标注格式');
+
+      annotationFileName = file.name;
+      imageFileName = payload.source_image?.file_name || '';
+      const importedBridgeId = payload.bridge?.bridge_id || '';
+      const importedBridgeName = payload.bridge?.bridge_name || '';
+      const importedSpanCount = payload.span?.count ?? payload.bridge?.span_count ?? 1;
+      const importedSpanIndex = payload.span?.index ?? payload.annotation?.span_index ?? 1;
+      const matchingImageLoaded = hasMatchingImage();
+      sourceImageWidth = Number(payload.source_image?.width_px) || (matchingImageLoaded ? image.naturalWidth : 0);
+      sourceImageHeight = Number(payload.source_image?.height_px) || (matchingImageLoaded ? image.naturalHeight : 0);
+
+      elements.bridgeId.value = isDemoBridgeId(importedBridgeId) ? '' : importedBridgeId;
+      elements.bridgeName.value = (!importedBridgeName || isDemoBridgeName(importedBridgeName))
+        ? inferredBridgeName(payload, file.name)
+        : importedBridgeName;
+      elements.sourceGroupId.value = payload.bridge?.source_group_id || sourceGroupFromImageFile(payload.source_image?.file_name || file.name);
+      elements.spanCount.value = importedSpanCount;
+      elements.spanIndex.value = importedSpanIndex;
+      elements.spanM.value = payload.span?.clear_span_m ?? payload.bridge?.span_m ?? payload.dimensions?.span_m ?? '';
+      elements.drawingUrl.value = payload.bridge?.drawing_url || '';
+      elements.annotator.value = payload.annotation?.annotator || '';
+      elements.quality.value = payload.annotation?.quality || 'medium';
+      setDefects(payload.annotation?.defects || []);
+      elements.notes.value = payload.annotation?.notes || '';
+      points = payload.annotation?.points || {};
+      placementHistory = POINT_ORDER.filter(item => points[item.key]).map(item => item.key);
+      activeIndex = Math.min(placementHistory.length, POINT_ORDER.length);
+
+      if (matchingImageLoaded) {
+        elements.canvasShell.hidden = false;
+        elements.emptyState.hidden = true;
+      } else {
+        showImagePlaceholder('请选择当前 JSON 对应的原图', imageFileName || '该记录没有保存原图文件名，请人工确认');
+        elements.imageMeta.textContent = imageFileName ? `待匹配原图 · ${imageFileName}` : '当前 JSON 缺少原图文件名';
+      }
+      refresh();
+      updateReviewQueueStatus();
+      if (!matchingImageLoaded) {
+        elements.messages.innerHTML = `<div class="message warn">标注八点已载入并保留；请选择对应原图${imageFileName ? `“${imageFileName}”` : ''}后复核。</div>`;
+      }
+    }
+
+    elements.annotationInput.addEventListener('change', async event => {
+      const file = event.target.files?.[0];
+      if (!file) return;
+      reviewQueue = [];
+      reviewQueueIndex = -1;
+      updateReviewQueueStatus();
+      try {
+        await loadAnnotationFile(file);
+      } catch (error) {
+        elements.messages.innerHTML = `<div class="message error">载入失败：${error.message}</div>`;
+      } finally {
+        event.target.value = '';
+      }
+    });
+
+    elements.reviewQueueInput.addEventListener('change', async event => {
+      reviewQueue = Array.from(event.target.files || []).sort((left, right) => left.name.localeCompare(right.name, 'zh-CN'));
+      reviewQueueIndex = reviewQueue.length ? 0 : -1;
+      updateReviewQueueStatus();
+      try {
+        if (reviewQueue.length) await loadAnnotationFile(reviewQueue[0]);
+      } catch (error) {
+        elements.messages.innerHTML = `<div class="message error">载入待复核记录失败：${error.message}</div>`;
+      } finally {
+        event.target.value = '';
+      }
+    });
+
+    elements.nextReviewButton.addEventListener('click', async () => {
+      if (reviewQueueIndex >= reviewQueue.length - 1) return;
+      reviewQueueIndex += 1;
+      updateReviewQueueStatus();
+      try {
+        await loadAnnotationFile(reviewQueue[reviewQueueIndex]);
+      } catch (error) {
+        elements.messages.innerHTML = `<div class="message error">载入下一条失败：${error.message}</div>`;
+      }
+    });
+
+    elements.viewport.addEventListener('pointerdown', event => {
+      const wantsPan = panMode || spacePan || event.button === 1;
+      if (!hasMatchingImage() || !wantsPan) return;
+      event.preventDefault();
+      suppressNextCanvasClick = true;
+      panGesture = {
+        pointerId: event.pointerId,
+        clientX: event.clientX,
+        clientY: event.clientY,
+        scrollLeft: elements.viewport.scrollLeft,
+        scrollTop: elements.viewport.scrollTop,
+      };
+      elements.viewport.setPointerCapture(event.pointerId);
+      elements.viewport.classList.add('panning');
+    });
+
+    elements.viewport.addEventListener('pointermove', event => {
+      if (!panGesture || panGesture.pointerId !== event.pointerId) return;
+      elements.viewport.scrollLeft = panGesture.scrollLeft - (event.clientX - panGesture.clientX);
+      elements.viewport.scrollTop = panGesture.scrollTop - (event.clientY - panGesture.clientY);
+    });
+
+    function finishPan(event) {
+      if (!panGesture || panGesture.pointerId !== event.pointerId) return;
+      if (elements.viewport.hasPointerCapture(event.pointerId)) elements.viewport.releasePointerCapture(event.pointerId);
+      panGesture = null;
+      elements.viewport.classList.remove('panning');
+      setTimeout(() => { suppressNextCanvasClick = false; }, 0);
+    }
+
+    elements.viewport.addEventListener('pointerup', finishPan);
+    elements.viewport.addEventListener('pointercancel', finishPan);
+    elements.viewport.addEventListener('auxclick', event => {
+      if (event.button === 1) event.preventDefault();
+    });
+    elements.viewport.addEventListener('wheel', event => {
+      if (!hasMatchingImage() || (!event.ctrlKey && !event.metaKey)) return;
+      event.preventDefault();
+      setZoom(zoom * Math.exp(-event.deltaY * 0.0015), event);
+    }, { passive: false });
+
+    elements.canvas.addEventListener('click', event => {
+      if (suppressNextCanvasClick) {
+        suppressNextCanvasClick = false;
+        return;
+      }
+      if (panMode || spacePan || !hasMatchingImage() || activeIndex >= POINT_ORDER.length) return;
+      const rect = elements.canvas.getBoundingClientRect();
+      const item = POINT_ORDER[activeIndex];
+      points[item.key] = {
+        x: (event.clientX - rect.left) * elements.canvas.width / rect.width,
+        y: (event.clientY - rect.top) * elements.canvas.height / rect.height,
+      };
+      placementHistory = placementHistory.filter(key => key !== item.key);
+      placementHistory.push(item.key);
+      activeIndex += 1;
+      refresh();
+    });
+
+    elements.undoButton.addEventListener('click', () => {
+      const key = placementHistory.pop();
+      if (!key) return;
+      delete points[key];
+      activeIndex = POINT_ORDER.findIndex(item => item.key === key);
+      refresh();
+    });
+    elements.resetButton.addEventListener('click', resetPoints);
+    elements.nextSpanButton.addEventListener('click', () => {
+      try {
+        const { spanCount, spanIndex } = spanMetadata();
+        if (spanIndex >= spanCount) throw new Error('当前已经是最后一跨');
+        elements.spanIndex.value = String(spanIndex + 1);
+        setDefects([]);
+        resetPoints();
+        elements.messages.innerHTML = `<div class="message warn">已切换到第 ${spanIndex + 1}/${spanCount} 跨；请核对当前跨净跨后重新标注八点。</div>`;
+      } catch (error) {
+        elements.messages.innerHTML = `<div class="message error">切换失败：${error.message}</div>`;
+      }
+    });
+    [elements.spanCount, elements.spanIndex].forEach(input => input.addEventListener('change', () => {
+      try {
+        spanMetadata();
+        updatePrompt();
+      } catch (error) {
+        elements.messages.innerHTML = `<div class="message error">跨信息错误：${error.message}</div>`;
+      }
+    }));
+    elements.zoomOutButton.addEventListener('click', () => setZoom(zoom / 1.2));
+    elements.zoomInButton.addEventListener('click', () => setZoom(zoom * 1.2));
+    elements.fitButton.addEventListener('click', fitImage);
+    elements.actualButton.addEventListener('click', () => setZoom(1));
+    elements.panButton.addEventListener('click', () => {
+      panMode = !panMode;
+      updateInteractionMode();
+    });
+    elements.labelButton.addEventListener('click', () => {
+      showPointLabels = !showPointLabels;
+      updateInteractionMode();
+      draw();
+    });
+    async function runExport(callback) {
+      try {
+        const result = await callback();
+        if (result) {
+          elements.messages.innerHTML = `<div class="message ok">已导出 ${result.fileName} 到 ${result.destination}。</div>`;
+        }
+      } catch (error) {
+        if (error.name === 'AbortError') return;
+        elements.messages.innerHTML = `<div class="message error">导出失败：${error.message}</div>`;
+      }
+    }
+
+    if (!window.showDirectoryPicker) {
+      elements.imageFolderButton.disabled = true;
+      elements.imageFolderStatus.textContent = '当前浏览器不支持文件夹排序，请使用“单独选择图纸”。';
+      elements.exportFolderButton.disabled = true;
+      elements.exportFolderStatus.textContent = '当前浏览器不支持指定文件夹，将使用默认下载目录。';
+    }
+    elements.exportFolderButton.addEventListener('click', () => runExport(chooseExportDirectory));
+    elements.jsonButton.addEventListener('click', () => runExport(() => saveExport(JSON.stringify(annotationPayload(), null, 2), `${exportFileStem()}_five_miao_nodes.json`, 'application/json;charset=utf-8')));
+    elements.csvButton.addEventListener('click', () => runExport(exportCsv));
+
+    function isEditingField() {
+      return ['INPUT', 'TEXTAREA', 'SELECT'].includes(document.activeElement?.tagName);
+    }
+
+    window.addEventListener('keydown', event => {
+      if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === 'z') {
+        event.preventDefault();
+        elements.undoButton.click();
+      }
+      if (!isEditingField() && event.code === 'Space') {
+        event.preventDefault();
+        if (!spacePan) {
+          spacePan = true;
+          updateInteractionMode();
+        }
+      }
+      if (!event.repeat && !isEditingField() && !event.ctrlKey && !event.metaKey && event.key.toLowerCase() === 'p') {
+        panMode = !panMode;
+        updateInteractionMode();
+      }
+      if (!event.repeat && !isEditingField() && !event.ctrlKey && !event.metaKey && event.key.toLowerCase() === 'l') {
+        showPointLabels = !showPointLabels;
+        updateInteractionMode();
+        draw();
+      }
+      const number = Number(event.key);
+      if (!event.ctrlKey && !event.metaKey && number >= 1 && number <= 8 && !isEditingField()) {
+        activeIndex = number - 1;
+        renderPointList();
+        updatePrompt();
+        draw();
+      }
+    });
+
+    window.addEventListener('keyup', event => {
+      if (event.code !== 'Space') return;
+      spacePan = false;
+      updateInteractionMode();
+    });
+
+    window.addEventListener('blur', () => {
+      spacePan = false;
+      panGesture = null;
+      elements.viewport.classList.remove('panning');
+      updateInteractionMode();
+    });
+
+    renderPointList();
+    updatePrompt();
+    updateInteractionMode();
+  </script>
+</body>
+</html>

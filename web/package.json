@@ -84,7 +84,7 @@
 		"@vitejs/plugin-vue": "^5.1.2",
 		"@vue/compiler-sfc": "^3.4.38",
 		"baseline-browser-mapping": "^2.9.19",
-		"eslint": "^9.9.0",
+		"eslint": "8.57.1",
 		"eslint-plugin-vue": "^9.27.0",
 		"playwright": "^1.50.0",
 		"prettier": "^2.8.1",

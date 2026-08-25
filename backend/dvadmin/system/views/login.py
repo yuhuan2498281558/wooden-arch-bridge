@@ -68,7 +68,7 @@ class LoginSerializer(TokenObtainPairSerializer):
 
     def validate(self, attrs):
         captcha = self.initial_data.get("captcha", None)
-        if dispatch.get_system_config_values("base.captcha_state"):
+        if dispatch.get_system_config_values("base.captcha_state") and not getattr(settings, "LOGIN_NO_CAPTCHA_AUTH", False):
             if captcha is None:
                 raise CustomValidationError(_("Verification code is required"))
             self.image_code = CaptchaStore.objects.filter(

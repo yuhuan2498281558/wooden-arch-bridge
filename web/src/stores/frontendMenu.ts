@@ -115,34 +115,7 @@ export const handleMenu = (menuData: Array<any>) => {
         strict: true,
     })
     
-    // 根据当前语言设置首页标题
-    const { themeConfig } = storeToRefs(useThemeConfig(pinia));
-    const currentLanguage = themeConfig.value.globalI18n;
-    let homeTitle = '首页';
-    if (currentLanguage === 'en') {
-        homeTitle = 'Home';
-    } else if (currentLanguage === 'zh-tw') {
-        homeTitle = '首頁';
-    }
-    
-    const dynamicRoutes = [
-        {
-            path: '/home', name: 'home',
-            component: dynamicImport(dynamicViewsModules, '/system/home/index'),
-            meta: {
-                title: homeTitle,
-                isLink: '',
-                isHide: false,
-                isKeepAlive: true,
-                isAffix: true,
-                isIframe: false,
-                roles: ['admin'],
-                icon: 'iconfont icon-shouye'
-            }
-        },
-        ...data
-    ]
-    return {frameIn:dynamicRoutes,frameOut:frameOutRoutes}
+    return {frameIn:data,frameOut:frameOutRoutes}
 }
 
 export const useFrontendMenuStore = defineStore('frontendMenu',{

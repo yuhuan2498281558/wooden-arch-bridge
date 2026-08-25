@@ -28,7 +28,14 @@ from conf.env import *
 # See https://docs.djangoproject.com/en/3.2/howto/deployment/checklist/
 
 # SECURITY WARNING: keep the secret key used in production secret!
-SECRET_KEY = "django-insecure--z8%exyzt7e_%i@1+#1mm=%lb5=^fx_57=1@a+_y7bg5-w%)sm"
+# conf/env.py reads it from the SECRET_KEY environment variable.  The
+# fallback below is only for local development and must not be used in
+# production (settings refuses it when DEBUG is disabled).
+SECRET_KEY = SECRET_KEY or "django-insecure--z8%exyzt7e_%i@1+#1mm=%lb5=^fx_57=1@a+_y7bg5-w%)sm"
+if not DEBUG and SECRET_KEY.startswith("django-insecure-"):
+    raise RuntimeError(
+        "SECRET_KEY must be provided via the SECRET_KEY environment variable in production"
+    )
 # 初始化plugins插件路径到环境变量中
 PLUGINS_PATH = os.path.join(BASE_DIR, "plugins")
 sys.path.insert(0, os.path.join(PLUGINS_PATH))
@@ -199,7 +206,8 @@ STATICFILES_FINDERS = (
 # ================================================= #
 
 # 全部允许配置
-CORS_ORIGIN_ALLOW_ALL = True
+CORS_ALLOWED_ORIGINS = locals().get("CORS_ALLOWED_ORIGINS", [])
+CORS_ORIGIN_ALLOW_ALL = not CORS_ALLOWED_ORIGINS
 # 允许cookie
 CORS_ALLOW_CREDENTIALS = True  # 指明在跨域访问中，后端是否支持对cookie的操作
 

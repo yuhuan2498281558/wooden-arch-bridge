@@ -68,6 +68,8 @@ import { formatAxis } from '/@/utils/formatTime';
 import { NextLoading } from '/@/utils/loading';
 import * as loginApi from '/@/views/system/login/api';
 import { useUserInfo } from '/@/stores/userInfo';
+
+const bridgeHomePath = '/bridge/model3d';
 import { DictionaryStore } from '/@/stores/dictionary';
 import { SystemConfigStore } from '/@/stores/systemConfig';
 import { BtnPermissionStore } from '/@/plugin/permission/store.permission';
@@ -191,14 +193,27 @@ export default defineComponent({
       const pwd_change_count = userInfos.value.pwd_change_count ?? 0
       if(pwd_change_count > 0){
         // 如果是复制粘贴的路径，非首页/登录页，那么登录成功后重定向到对应的路径中
-        if (route.query?.redirect) {
-        	router.push({
-        		path: <string>route.query?.redirect,
-        		query: Object.keys(<string>route.query?.params).length > 0 ? JSON.parse(<string>route.query?.params) : '',
-        	});
-        } else {
-        	router.push('/');
-        }
+				if (route.query?.redirect) {
+					let redirectQuery: any = '';
+					try {
+						const parsed = route.query?.params
+							? JSON.parse(<string>route.query?.params)
+							: '';
+						// 仅接受普通对象；"null"/数组/标量都会落入空查询
+						redirectQuery =
+							parsed && typeof parsed === 'object' && !Array.isArray(parsed)
+								? parsed
+								: '';
+					} catch (e) {
+						redirectQuery = '';
+					}
+					router.push({
+						path: <string>route.query?.redirect,
+						query: Object.keys(redirectQuery).length > 0 ? redirectQuery : '',
+					});
+				} else {
+					router.push(bridgeHomePath);
+				}
         // 登录成功提示
         // 关闭 loading
         state.loading.signIn = true;

@@ -4,7 +4,7 @@ export default {
         pages: {
             personal: {
                 PersonalInfo1: ' 生活變得再糟糕，也不妨礙我變得更好！',
-                PersonalInfo2: 'DVAdmin是一款基於Django和Vue.js開發的高效、易用的後台管理系統，主要用於快速構建企業級Web應用的管理後台，它透過前後端分離架構，提供了一整套開箱即用的功能模組，幫助開發者和企業降低開發成本、提升管理效率。（更改前端目錄下src/i18n/pages/personal/下的翻譯文件中personal.PersonalInfo2可更改此提示文字）',
+                PersonalInfo2: '木拱橋智能設計平台整合參數化設計、結構預測、安全分析、三維模型展示與工程圖紙生成，為橋梁設計與複核工作提供統一工作台。',
                 info: {
                     myInfoTitle: '個人資訊',
                     updateInfoTitle: '更新資訊',

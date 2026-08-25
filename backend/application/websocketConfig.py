@@ -7,7 +7,7 @@ from channels.generic.websocket import AsyncJsonWebsocketConsumer, AsyncWebsocke
 import json
 
 from channels.layers import get_channel_layer
-from jwt import InvalidSignatureError
+from jwt import InvalidTokenError
 from rest_framework.request import Request
 
 from application import settings
@@ -59,7 +59,14 @@ class DvadminWebSocket(AsyncJsonWebsocketConsumer):
         try:
             import jwt
             self.service_uid = self.scope["url_route"]["kwargs"]["service_uid"]
-            decoded_result = jwt.decode(self.service_uid, settings.SECRET_KEY, algorithms=["HS256"])
+            # require 强制校验 user_id 与 exp，缺失/过期的 token 一律拒绝连接，
+            # 与 sse_views 的鉴权口径保持一致
+            decoded_result = jwt.decode(
+                self.service_uid,
+                settings.SECRET_KEY,
+                algorithms=["HS256"],
+                options={"require": ["user_id", "exp"]},
+            )
             if decoded_result:
                 self.user_id = decoded_result.get('user_id')
                 self.chat_group_name = "user_" + str(self.user_id)
@@ -78,13 +85,15 @@ class DvadminWebSocket(AsyncJsonWebsocketConsumer):
                     await self.send_json(
                         set_message('system', 'SYSTEM', "请查看您的未读消息~",
                                     unread=unread_count))
-        except InvalidSignatureError:
-            await self.disconnect(None)
+        except InvalidTokenError:
+            # 签名无效、过期、缺失字段等所有 JWT 异常统一拒绝连接
+            await self.close(code=4401)
 
     async def disconnect(self, close_code):
-        # Leave room group
-        await self.channel_layer.group_discard(self.chat_group_name, self.channel_name)
-        print("连接关闭")
+        # Leave room group（connect 失败时 chat_group_name 可能未定义）
+        chat_group_name = getattr(self, 'chat_group_name', None)
+        if chat_group_name:
+            await self.channel_layer.group_discard(chat_group_name, self.channel_name)
         try:
             await self.close(close_code)
         except Exception:

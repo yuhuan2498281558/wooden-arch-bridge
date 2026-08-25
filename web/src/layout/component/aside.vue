@@ -1,7 +1,7 @@
 <template>
 	<div class="h100" v-show="!isTagsViewCurrenFull">
 		<el-aside class="layout-aside" :class="setCollapseStyle">
-			<Logo v-if="setShowLogo" />
+			<div v-if="setShowProjectTitle" class="layout-aside-title">中国木拱廊桥智能设计系统</div>
 			<el-scrollbar class="flex-auto" ref="layoutAsideScrollbarRef" @mouseenter="onAsideEnterLeave(true)" @mouseleave="onAsideEnterLeave(false)">
 				<Vertical :menuList="state.menuList" />
 			</el-scrollbar>
@@ -20,7 +20,6 @@ import mittBus from '/@/utils/mitt';
 import { useRoute } from 'vue-router';
 const route = useRoute();
 // 引入组件
-const Logo = defineAsyncComponent(() => import('/@/layout/logo/index.vue'));
 const Vertical = defineAsyncComponent(() => import('/@/layout/navMenu/vertical.vue'));
 
 // 定义变量内容
@@ -69,11 +68,8 @@ const setCollapseStyle = computed(() => {
 		}
 	}
 });
-// 设置显示/隐藏 logo
-const setShowLogo = computed(() => {
-	let { layout, isShowLogo } = themeConfig.value;
-	return (isShowLogo && layout === 'defaults') || (isShowLogo && layout === 'columns');
-});
+// 展开状态显示业务系统名称，保持折叠侧栏的图标空间。
+const setShowProjectTitle = computed(() => !themeConfig.value.isCollapse || state.clientWidth <= 1000);
 // 关闭移动端蒙版
 const closeLayoutAsideMobileMode = () => {
 	const el = document.querySelector('.layout-aside-mobile-mode');

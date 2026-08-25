@@ -70,16 +70,20 @@ onMounted(() => {
 			setingsRef.value.openDrawer();
 		});
     // 设置皮肤缓存版本，每次更新版本可以所有用户清空缓存
-    const themeConfigVersion = '1.0.0'
+		const themeConfigVersion = '1.3.0';
 		// 获取缓存中的布局配置
-    if (Local.get('themeConfigVersion') !== themeConfigVersion) {
-        Local.clear();
-        Local.set('themeConfigVersion', themeConfigVersion);
-	      window.location.reload();
-        return
-    }
+		if (Local.get('themeConfigVersion') !== themeConfigVersion) {
+			// 仅清理视觉配置，避免旧版棕色侧栏与默认品牌信息覆盖白色主题。
+			Local.remove('themeConfig');
+			Local.remove('themeConfigStyle');
+			Local.remove('frequency');
+			Local.set('themeConfigVersion', themeConfigVersion);
+			window.location.reload();
+			return;
+		}
 		if (Local.get('themeConfig')) {
-			storesThemeConfig.setThemeConfig({ themeConfig: Local.get('themeConfig') });
+			const savedConfig = Local.get('themeConfig');
+			storesThemeConfig.setThemeConfig({ themeConfig: savedConfig });
 			document.documentElement.style.cssText = Local.get('themeConfigStyle');
 		}
 		// 获取缓存中的全屏配置
@@ -115,10 +119,16 @@ watch(
 // websocket相关代码
 import { messageCenterStore } from '/@/stores/messageCenter';
 const wsReceive = (message: any) => {
-  const data = JSON.parse(message.data);
+  let data: any = null;
+  try {
+    data = JSON.parse(message.data);
+  } catch (e) {
+    // 非法 JSON 直接忽略，避免中断整个消息处理
+    return;
+  }
   const { unread } = data;
   const messageCenter = messageCenterStore();
-  messageCenter.setUnread(unread);
+  messageCenter.setUnread(Number.isFinite(Number(unread)) ? Number(unread) : 0);
   if (data.contentType === 'SYSTEM') {
     ElNotification({
       title: '系统消息',
@@ -128,9 +138,9 @@ const wsReceive = (message: any) => {
       duration: 5000,
     });
   } else if (data.contentType === 'Content') {
-    ElMessageBox.confirm(data.content, data.notificationTitle, {
-      confirmButtonText: data.notificationButton,
-      dangerouslyUseHTMLString: true,
+    // 服务端内容可能含富文本，但这里以纯文本渲染，避免 HTML 注入
+    ElMessageBox.confirm(String(data.content ?? ''), String(data.notificationTitle ?? '通知'), {
+      confirmButtonText: String(data.notificationButton ?? '确定'),
       cancelButtonText: '关闭',
       type: 'info',
       closeOnClickModal: false,

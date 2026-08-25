@@ -8,7 +8,7 @@ export default {
       quickNavigationTool: '快捷導航工具',
     },
     footer: {
-      copyright: ' ❤️ Powered by DVAdmin Copyright © 巨夢科技·DVAmin團隊 ❤️',
+      copyright: '木拱橋智能設計平台',
     },
     router: {
       home: '首頁',
@@ -296,7 +296,7 @@ export default {
     personal: {
       PersonalInfo: '個人資訊',
       PersonalInfo1: ' 生活變得再糟糕，也不妨礙我變得更好！',
-      PersonalInfo2: 'DVAdmin是一款基於Django和Vue.js開發的高效、易用的後台管理系統，主要用於快速構建企業級Web應用的管理後台，它透過前後端分離架構，提供了一整套開箱即用的功能模組，幫助開發者和企業降低開發成本、提升管理效率。（更改前端目錄下src/i18n/lang/下的翻譯文件中personal.PersonalInfo2可更改此提示文字）',
+      PersonalInfo2: '木拱橋智能設計平台整合參數化設計、結構預測、安全分析、三維模型展示與工程圖紙生成，為橋梁設計與複核工作提供統一工作台。',
       MyInfo: '個人信息',
       UpdateInfo: '更新資訊',
       AccountSecurity: '帳號安全',

@@ -26,7 +26,7 @@ export const dynamicRoutes: Array<RouteRecordRaw> = [
 		path: '/',
 		name: '/',
 		component: () => import('/@/layout/index.vue'),
-		redirect: '/home',
+		redirect: '/bridge/model3d',
 		meta: {
 			isKeepAlive: true,
 		},
@@ -44,6 +44,101 @@ export const dynamicRoutes: Array<RouteRecordRaw> = [
 			isAffix: false,
 			isIframe: false,
 			icon: 'iconfont icon-gerenzhongxin',
+		},
+	},
+	// 木拱桥设计工作台：静态兜底路由。
+	// 即使部署库中没有配置 bridge 菜单记录，登录后也能直接访问工作台，
+	// 避免 next('/bridge/model3d') 命中 404。isHide 保证不重复出现在侧栏。
+	{
+		path: '/bridge/model3d',
+		name: 'bridgeModel3d',
+		component: () => import('/@/views/bridge/design/index.vue'),
+		meta: {
+			title: '木拱桥工作台',
+			isLink: '',
+			isHide: true,
+			isKeepAlive: true,
+			isAffix: false,
+			isIframe: false,
+			icon: 'iconfont icon-caidan',
+		},
+	},
+	{
+		path: '/bridge/drawing',
+		name: 'bridgeDrawing',
+		component: () => import('/@/views/bridge/design/index.vue'),
+		meta: {
+			title: '结构图纸',
+			isLink: '',
+			isHide: true,
+			isKeepAlive: true,
+			isAffix: false,
+			isIframe: false,
+		},
+	},
+	{
+		path: '/bridge/params',
+		name: 'bridgeParams',
+		component: () => import('/@/views/bridge/design/index.vue'),
+		meta: {
+			title: '设计参数',
+			isLink: '',
+			isHide: true,
+			isKeepAlive: true,
+			isAffix: false,
+			isIframe: false,
+		},
+	},
+	{
+		path: '/bridge/results',
+		name: 'bridgeResults',
+		component: () => import('/@/views/bridge/design/index.vue'),
+		meta: {
+			title: '预测结果',
+			isLink: '',
+			isHide: true,
+			isKeepAlive: true,
+			isAffix: false,
+			isIframe: false,
+		},
+	},
+	{
+		path: '/bridge/safety',
+		name: 'bridgeSafety',
+		component: () => import('/@/views/bridge/design/index.vue'),
+		meta: {
+			title: '安全性分析',
+			isLink: '',
+			isHide: true,
+			isKeepAlive: true,
+			isAffix: false,
+			isIframe: false,
+		},
+	},
+	{
+		path: '/bridge/optimize',
+		name: 'bridgeOptimize',
+		component: () => import('/@/views/bridge/design/index.vue'),
+		meta: {
+			title: '方案优化',
+			isLink: '',
+			isHide: true,
+			isKeepAlive: true,
+			isAffix: false,
+			isIframe: false,
+		},
+	},
+	{
+		path: '/bridge/chat',
+		name: 'bridgeChat',
+		component: () => import('/@/views/bridge/design/index.vue'),
+		meta: {
+			title: '智能设计',
+			isLink: '',
+			isHide: true,
+			isKeepAlive: true,
+			isAffix: false,
+			isIframe: false,
 		},
 	}
 ];

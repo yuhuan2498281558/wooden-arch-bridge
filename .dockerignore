@@ -1,0 +1,11 @@
+.git
+.github
+web/node_modules
+web/dist
+backend/logs
+logs
+**/__pycache__
+**/*.pyc
+*.zip
+*.tar
+*.7z

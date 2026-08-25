@@ -15,6 +15,8 @@ import {useTagsViewRoutes} from "/@/stores/tagsViewRoutes";
 import {toRaw} from "vue";
 import {checkVersion} from "/@/utils/upgrade";
 
+const bridgeHomePath = '/bridge/model3d';
+
 /**
  * 1、前端控制路由时：isRequestRoutes 为 false，需要写 roles，需要走 setFilterRoute 方法。
  * 2、后端控制路由时：isRequestRoutes 为 true，不需要写 roles，不需要走 setFilterRoute 方法），
@@ -129,7 +131,7 @@ router.beforeEach(async (to, from, next) => {
             next('/login');
             NProgress.done();
         } else if (token && to.path === '/login' && userInfos.value.pwd_change_count>0) {
-            next('/home');
+            next(bridgeHomePath);
             NProgress.done();
         }else if(token &&  frameOutRoutes.includes(to.path) ){
             next()

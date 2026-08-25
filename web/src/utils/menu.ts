@@ -1,8 +1,4 @@
 import XEUtils from "xe-utils"
-import {dynamicRoutes, staticRoutes} from "/@/router/route";
-import { useThemeConfig } from "/@/stores/themeConfig";
-import pinia from "/@/stores/index";
-import { storeToRefs } from "pinia";
 
 /**
  * @description: 处理后端菜单数据格式
@@ -64,30 +60,5 @@ export const handleMenu = (menuData: Array<any>) => {
         strict: true,
     })
     
-    // 根据当前语言设置首页标题
-    const { themeConfig } = storeToRefs(useThemeConfig(pinia));
-    const currentLanguage = themeConfig.value.globalI18n;
-    let homeTitle = '首页';
-    if (currentLanguage === 'en') {
-        homeTitle = 'Home';
-    } else if (currentLanguage === 'zh-tw') {
-        homeTitle = '首頁';
-    }
-    
-    const dynamicRoutes = [
-        {
-            path: '/home', name: 'home', component: '/system/home/index', meta: {
-                title: homeTitle,
-                isLink: '',
-                isHide: false,
-                isKeepAlive: true,
-                isAffix: true,
-                isIframe: false,
-                roles: ['admin'],
-                icon: 'iconfont icon-shouye'
-            }
-        },
-        ...data
-    ]
-    return {frameIn:dynamicRoutes,frameOut:iframeRoutes}
+    return {frameIn:data,frameOut:iframeRoutes}
 }

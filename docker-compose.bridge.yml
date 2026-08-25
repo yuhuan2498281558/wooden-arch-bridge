@@ -1,0 +1,142 @@
+version: "3.8"
+
+services:
+  bridge-web:
+    container_name: bridge-web
+    build:
+      context: .
+      dockerfile: docker_env/bridge/web.Dockerfile
+    ports:
+      - "80:6000"
+      - "6000:6000"
+    volumes:
+      - ./backend/media:/backend/media
+    depends_on:
+      - bridge-backend
+      - bridge-algorithm
+    restart: always
+    networks:
+      - bridge-network
+
+  bridge-backend:
+    container_name: bridge-backend
+    build:
+      context: .
+      dockerfile: docker_env/bridge/backend.Dockerfile
+    working_dir: /backend
+    environment:
+      TZ: Asia/Shanghai
+      PYTHONUNBUFFERED: "1"
+      DJANGO_DEBUG: "${DJANGO_DEBUG:-false}"
+      DJANGO_ALLOWED_HOSTS: "${DJANGO_ALLOWED_HOSTS:-localhost,127.0.0.1}"
+      DJANGO_CORS_ALLOWED_ORIGINS: "${DJANGO_CORS_ALLOWED_ORIGINS:-http://localhost:6000}"
+      # 生产必须通过 .env 注入真实密钥，否则后端会在 DEBUG=false 时拒绝启动
+      SECRET_KEY: "${SECRET_KEY:?SECRET_KEY is required in .env}"
+      DATABASE_ENGINE: "${DATABASE_ENGINE:-django.db.backends.postgresql_psycopg2}"
+      DATABASE_NAME: "${DATABASE_NAME:-bridge_design_dvadmin3}"
+      DATABASE_HOST: "${DATABASE_HOST:-172.19.237.131}"
+      DATABASE_PORT: "${DATABASE_PORT:-5432}"
+      DATABASE_USER: "${DATABASE_USER:-bridge_user}"
+      DATABASE_PASSWORD: "${DATABASE_PASSWORD:?DATABASE_PASSWORD is required in .env}"
+      REDIS_HOST: "bridge-redis"
+      REDIS_PASSWORD: "${REDIS_PASSWORD:?REDIS_PASSWORD is required in .env}"
+      LOGIN_NO_CAPTCHA_AUTH: "${LOGIN_NO_CAPTCHA_AUTH:-false}"
+    volumes:
+      - ./backend/media:/backend/media
+      - ./logs/backend:/backend/logs
+    depends_on:
+      - bridge-redis
+    expose:
+      - "8002"
+    restart: always
+    networks:
+      - bridge-network
+
+  bridge-algorithm:
+    container_name: bridge-algorithm
+    build:
+      context: .
+      dockerfile: docker_env/bridge/algorithm.Dockerfile
+    environment:
+      TZ: Asia/Shanghai
+      PYTHONUNBUFFERED: "1"
+      BIMFACE_APP_KEY: "${BIMFACE_APP_KEY:-}"
+      BIMFACE_APP_SECRET: "${BIMFACE_APP_SECRET:-}"
+      BIMFACE_FILE_ID: "${BIMFACE_FILE_ID:-}"
+      # 导师两阶段参数模型随算法镜像打包，默认启用；模型缺失或校验失败时
+      # /predict 会显式标记并回退规则，不会伪装成模型结果。
+      BRIDGE_DESIGN_MODEL_ENABLED: "${BRIDGE_DESIGN_MODEL_ENABLED:-true}"
+      BRIDGE_DESIGN_MODEL_DIR: "/app/bridge_algorithm_service/mentor_models"
+      # Pilot 节点模型默认关闭。仅在人工放置受信任产物并显式启用后加载；
+      # 缺文件、越出训练范围或预测非法时服务会回退固定规则。
+      BRIDGE_NODE_MODEL_ENABLED: "${BRIDGE_NODE_MODEL_ENABLED:-false}"
+      BRIDGE_NODE_MODEL_DIR: "/app/model_artifacts"
+      # v9 只在设计人员显式选择前/后半区且该开关启用时覆盖 alpha；beta 仍来自 v6。
+      BRIDGE_NODE_DESIGN_MODE_MODEL_ENABLED: "${BRIDGE_NODE_DESIGN_MODE_MODEL_ENABLED:-false}"
+      BRIDGE_NODE_DESIGN_MODE_MODEL_DIR: "/app/model_artifacts"
+    volumes:
+      - "${BRIDGE_NODE_MODEL_HOST_DIR:-./bridge_algorithm_service/model_artifacts}:/app/model_artifacts:ro"
+    expose:
+      - "8001"
+    restart: always
+    networks:
+      - bridge-network
+
+  bridge-redis:
+    image: redis:7-alpine
+    container_name: bridge-redis
+    command: sh -c 'redis-server --appendonly yes --requirepass "$$REDIS_PASSWORD"'
+    environment:
+      TZ: Asia/Shanghai
+      REDIS_PASSWORD: "${REDIS_PASSWORD:?REDIS_PASSWORD is required in .env}"
+    volumes:
+      - bridge-redis-data:/data
+    expose:
+      - "6379"
+    restart: always
+    networks:
+      - bridge-network
+
+  # Celery worker：异步导出、消息中心等后台任务
+  bridge-celery:
+    container_name: bridge-celery
+    build:
+      context: .
+      dockerfile: docker_env/bridge/backend.Dockerfile
+    working_dir: /backend
+    command: ["celery", "-A", "application", "worker", "-l", "info", "--concurrency=2"]
+    environment:
+      TZ: Asia/Shanghai
+      PYTHONUNBUFFERED: "1"
+        C_FORCE_ROOT: "true"
+
+      DJANGO_DEBUG: "${DJANGO_DEBUG:-false}"
+      DJANGO_ALLOWED_HOSTS: "${DJANGO_ALLOWED_HOSTS:-localhost,127.0.0.1}"
+      DJANGO_CORS_ALLOWED_ORIGINS: "${DJANGO_CORS_ALLOWED_ORIGINS:-http://localhost:6000}"
+      SECRET_KEY: "${SECRET_KEY:?SECRET_KEY is required in .env}"
+      DATABASE_ENGINE: "${DATABASE_ENGINE:-django.db.backends.postgresql_psycopg2}"
+      DATABASE_NAME: "${DATABASE_NAME:-bridge_design_dvadmin3}"
+      DATABASE_HOST: "${DATABASE_HOST:-172.19.237.131}"
+      DATABASE_PORT: "${DATABASE_PORT:-5432}"
+      DATABASE_USER: "${DATABASE_USER:-bridge_user}"
+      DATABASE_PASSWORD: "${DATABASE_PASSWORD:?DATABASE_PASSWORD is required in .env}"
+      REDIS_HOST: "bridge-redis"
+      REDIS_PASSWORD: "${REDIS_PASSWORD:?REDIS_PASSWORD is required in .env}"
+      LOGIN_NO_CAPTCHA_AUTH: "${LOGIN_NO_CAPTCHA_AUTH:-false}"
+    volumes:
+      - ./backend/media:/backend/media
+      - ./logs/backend:/backend/logs
+    depends_on:
+      - bridge-redis
+      - bridge-backend
+    restart: always
+    networks:
+      - bridge-network
+
+networks:
+  bridge-network:
+    name: bridge-network
+
+volumes:
+  bridge-redis-data:
+    name: bridge-redis-data

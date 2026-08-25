@@ -1,0 +1,181 @@
+{
+  "schema_version": "mentor-design-parameter-model-v1",
+  "model_version": "mentor-two-stage-2026-04-08",
+  "source": {
+    "bridge_archive": "bridge-design.zip",
+    "bridge_archive_sha256": "2e544d61bb0b91d8a7465d449f475461f8bcb008fb4a99512264d20cc91eadad",
+    "ssa_archive": "SSA-XGBoost.zip",
+    "ssa_archive_sha256": "f50d3e6c06cc3f32ab21f86ee4e7db1afcb1a058f0f10152948da1d420d3ef71",
+    "training_data_sha256": "d81ee190ba80458d7f90225fb57bec6274303e71d45ea8f007636850a7bb9428",
+    "ssa_matlab_main_sha256": "247ced206454684ffa2d6571ad486cf299f75b07321d3ea7bb976b36dcf4e2cb",
+    "ssa_matlab_implementation_sha256": "51f75bdccc86cefce882ef685101e9c0450ed58b7ff87dfbf103cd69a8f13a07",
+    "legacy_stage1_pickle_sha256": "ce39f404b0865f99dcb6d884fbb99399338f23faecc773c94d61d603a448e092",
+    "legacy_stage2_mat_sha256": "af986289a3a5c881f131567c8162438ffb52692fbf8fe6dbf1eed9ddb1a9627e"
+  },
+  "stage1": {
+    "name": "SSA-XGBoost",
+    "runtime_model": "XGBoost Booster",
+    "artifact": "stage1_xgboost.ubj",
+    "artifact_sha256": "f6cb9ee5ef47e22dd307fd24c06e8b6e8f00e3c7eba6ef8d685c42c2365568fd",
+    "feature_names": [
+      "length",
+      "width",
+      "span",
+      "rise",
+      "n1",
+      "n2"
+    ],
+    "feature_min": [
+      11.6,
+      3.2,
+      5.9,
+      1.45,
+      5.0,
+      4.0
+    ],
+    "feature_max": [
+      115.0,
+      6.83,
+      37.6,
+      12.3,
+      11.0,
+      10.0
+    ],
+    "output_bounds": [
+      0.08,
+      0.6
+    ],
+    "missing_rise_policy": {
+      "name": "legacy_span_ratio_seed",
+      "ratio": 0.17
+    },
+    "metrics_from_legacy_bundle": {
+      "train_r2": 0.9993152433029171,
+      "test_r2": -0.38867987651109903,
+      "test_mae": 0.020743410268302495,
+      "test_rmse": 0.0352592491238794,
+      "cv_mae": 0.023050876011458728
+    },
+    "search_provenance": "The source package contains the original MATLAB SSA implementation and a later Python candidate-search approximation. This runtime artifact is replayed unchanged; the manifest does not claim which search implementation produced the pickle."
+  },
+  "stage2": {
+    "name": "CF-BPNN",
+    "runtime_model": "direct cascade-forward matrix inference",
+    "artifact": "stage2_cfbpnn_weights.npz",
+    "artifact_sha256": "62d169a3eee6830c23519640cbb4c8cefabf8dc69fee714a11d826526a216bc4",
+    "network_shapes": {
+      "w1": [
+        15,
+        14
+      ],
+      "w2": [
+        10,
+        14
+      ],
+      "wl": [
+        10,
+        15
+      ],
+      "b1": [
+        15
+      ],
+      "b2": [
+        10
+      ],
+      "xmeans": [
+        8
+      ]
+    },
+    "input_mapping": {
+      "width": {
+        "source_index": 1,
+        "range": [
+          3.2,
+          6.83
+        ]
+      },
+      "span": {
+        "source_index": 2,
+        "range": [
+          5.0,
+          35.0
+        ]
+      },
+      "n1": {
+        "source_index": 4,
+        "range": [
+          5.0,
+          9.0
+        ]
+      },
+      "n2": {
+        "source_index": 5,
+        "range": [
+          4.0,
+          8.0
+        ]
+      }
+    },
+    "preprocess": [
+      "fixunknowns",
+      "removeconstantrows",
+      "mapminmax[-1,1]"
+    ],
+    "hidden_activation": "tansig/tanh",
+    "output_activation": "purelin",
+    "output_names": [
+      "s1_flat_lo",
+      "s1_flat_hi",
+      "s1_diag_lo",
+      "s1_diag_hi",
+      "s2_flat_lo",
+      "s2_flat_hi",
+      "s2_diag1_lo",
+      "s2_diag1_hi",
+      "s2_diag2_lo",
+      "s2_diag2_hi"
+    ],
+    "output_ranges_mm": [
+      [
+        240.0,
+        290.0
+      ],
+      [
+        240.0,
+        290.0
+      ],
+      [
+        270.0,
+        290.0
+      ],
+      [
+        270.0,
+        290.0
+      ],
+      [
+        190.0,
+        280.0
+      ],
+      [
+        190.0,
+        280.0
+      ],
+      [
+        170.0,
+        240.0
+      ],
+      [
+        170.0,
+        240.0
+      ],
+      [
+        200.0,
+        220.0
+      ],
+      [
+        200.0,
+        220.0
+      ]
+    ]
+  }
+}

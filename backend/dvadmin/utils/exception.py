@@ -67,5 +67,7 @@ def CustomExceptionHandler(ex, context):
     #     msg = "接口服务器异常,请联系管理员"
     elif isinstance(ex, Exception):
         logger.exception(traceback.format_exc())
-        msg = str(ex)
+        # 不把内部异常细节（SQL/路径等）直接返回给客户端
+        from django.conf import settings as django_settings
+        msg = str(ex) if getattr(django_settings, "DEBUG", False) else _("Internal server error")
     return ErrorResponse(msg=msg, code=code)

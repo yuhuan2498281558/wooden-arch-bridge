@@ -63,9 +63,10 @@ const { themeConfig } = storeToRefs(storesThemeConfig);
 const route = useRoute();
 const defaultActive = ref('')
 // 获取父级菜单数据
+// 注意：上游 handleMenu 不再注入 /home 占位菜单，这里不得再 shift() 掉第一个
+// 真实菜单项（shift 会变异 props 并导致横向菜单丢失首个入口）。
 const menuLists = computed(() => {
-  <RouteItems>props.menuList.shift()
-	return <RouteItems>props.menuList;
+	return <RouteItems>[...props.menuList];
 });
 // 递归获取当前路由的顶级索引
 const findFirstLevelIndex = (data, path) => {
@@ -124,8 +125,9 @@ const setSendClassicChildren = (path: string) => {
 const setCurrentRouterHighlight = (currentRoute: RouteToFrom) => {
 	const { path, meta } = currentRoute;
 	if (themeConfig.value.layout === 'classic') {
-    let firstLevelIndex = (findFirstLevelIndex(routesList.value, route.path) || 0) - 1
-    defaultActive.value = firstLevelIndex < 0 ? defaultActive.value : menuLists.value[firstLevelIndex].path
+    // menuLists 不再 shift，索引与 routesList 一一对应，去掉原 -1 补偿
+    let firstLevelIndex = findFirstLevelIndex(routesList.value, route.path) || 0
+    defaultActive.value = firstLevelIndex < 0 ? defaultActive.value : (menuLists.value[firstLevelIndex]?.path || defaultActive.value)
 	} else {
 		const pathSplit = meta?.isDynamic ? meta.isDynamicPath!.split('/') : path!.split('/');
 		if (pathSplit.length >= 4 && meta?.isHide) defaultActive.value = pathSplit.splice(0, 3).join('/');
@@ -155,7 +157,8 @@ const onToRouteClick = (val: RouteItem,index) => {
       mittBus.emit('setSendClassicChildren', children[0]);
     }
   } else {
-    router.push('/home')
+    // 无子级菜单直接跳自身路径，不再硬编码跳转 /bridge/model3d
+    router.push(val.path || children[0]?.path || '/')
   }
 };
 

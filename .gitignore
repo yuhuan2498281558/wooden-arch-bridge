@@ -17,3 +17,20 @@ docs/superpowers/
 # Local configuration files (not tracked in git)
 /backend/application/settings.py
 /backend/conf/env.py
+
+# Local deployment secrets and session scratch files (never sync to server)
+.env
+.env.local
+/scratch/
+
+# Sandbox/session temporary directories
+.review_tmp/
+.tmp_review/
+
+# Offline-trained pilot binaries are deployed separately and mounted read-only.
+/bridge_algorithm_service/model_artifacts/**/*.joblib
+
+# Python bytecode and test caches
+__pycache__/
+*.py[cod]
+.pytest_cache/

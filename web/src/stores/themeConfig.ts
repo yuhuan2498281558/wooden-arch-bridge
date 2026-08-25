@@ -18,7 +18,7 @@ export const useThemeConfig = defineStore('themeConfig', {
 			 * 全局主题
 			 */
 			// 默认 primary 主题颜色
-			primary: "#193755",
+			primary: '#4f6fc9',
 			// 是否开启深色模式
 			isIsDark: false,
 
@@ -26,9 +26,9 @@ export const useThemeConfig = defineStore('themeConfig', {
 			 * 顶栏设置
 			 */
 			// 默认顶栏导航背景颜色
-			topBar: "#f8f8f8",
+			topBar: '#ffffff',
 			// 默认顶栏导航字体颜色
-			topBarColor: "#000000",
+			topBarColor: '#252931',
 			// 是否开启顶栏背景颜色渐变
 			isTopBarColorGradual: false,
 
@@ -36,11 +36,11 @@ export const useThemeConfig = defineStore('themeConfig', {
 			 * 菜单设置
 			 */
 			// 默认菜单导航背景颜色
-			menuBar: "#f8f8f8",
+			menuBar: '#ffffff',
 			// 默认菜单导航字体颜色
-			menuBarColor: "#000000",
+			menuBarColor: '#282c33',
 			// 默认菜单高亮背景色
-			menuBarActiveColor: "rgba(0, 48, 255, 0.38)",
+			menuBarActiveColor: '#91a6f6',
 			// 是否开启菜单背景颜色渐变
 			isMenuBarColorGradual: false,
 
@@ -48,9 +48,9 @@ export const useThemeConfig = defineStore('themeConfig', {
 			 * 分栏设置
 			 */
 			// 默认分栏菜单背景颜色
-			columnsMenuBar:"#334054",
+			columnsMenuBar: '#ffffff',
 			// 默认分栏菜单字体颜色
-			columnsMenuBarColor: "#e6e6e6",
+			columnsMenuBarColor: '#282c33',
 			// 是否开启分栏菜单背景颜色渐变
 			isColumnsMenuBarColorGradual: false,
 			// 是否开启分栏菜单鼠标悬停预加载(预览菜单)
@@ -78,7 +78,7 @@ export const useThemeConfig = defineStore('themeConfig', {
 			 * 界面显示
 			 */
 			// 是否开启侧边栏 Logo
-			isShowLogo: true,
+			isShowLogo: false,
 			// 初始化变量，用于 el-scrollbar 的高度更新，请勿删除
 			isShowLogoChange: false,
 			// 是否开启 Breadcrumb，强制经典、横向布局不显示
@@ -111,7 +111,7 @@ export const useThemeConfig = defineStore('themeConfig', {
 			 */
 			// Tagsview 风格：可选值"<tags-style-one|tags-style-four|tags-style-five>"，默认 tags-style-five
 			// 定义的值与 `/src/layout/navBars/tagsView/tagsView.vue` 中的 class 同名
-			tagsStyle: 'tags-style-five',
+			tagsStyle: 'tags-style-four',
 			// 主页面切换动画：可选值"<slide-right|slide-left|opacitys>"，默认 slide-right
 			animation: 'slide-right',
 			// 分栏高亮风格：可选值"<columns-round|columns-card>"，默认 columns-round
@@ -137,11 +137,11 @@ export const useThemeConfig = defineStore('themeConfig', {
 			 * 全局网站标题 / 副标题
 			 */
 			// 网站主标题（菜单导航、浏览器当前网页标题）
-			globalTitle: 'DVAdmin',
+			globalTitle: '木拱桥智能设计平台',
 			// 网站副标题（登录页顶部文字）
-			globalViceTitle: 'DVAdmin',
+			globalViceTitle: '木拱桥智能设计平台',
 			// 网站副标题（登录页顶部文字）
-			globalViceTitleMsg: '企业级快速开发平台',
+			globalViceTitleMsg: '参数化设计与结构分析工作台',
 			// 默认初始语言，可选值"<zh-cn|en|zh-tw>"，默认 zh-cn
 			globalI18n: 'zh-cn',
 			// 默认全局组件大小，可选值"<large|'default'|small>"，默认 'large'
