@@ -22,6 +22,7 @@ from bridge_algorithm_service.front_half_low_tail import (
     copied_high_tail_trigger_would_fire,
     mix_front_half_low_tail_alpha,
 )
+from bridge_algorithm_service.uncommitted_alpha import UNCOMMITTED_BAND_CENTER
 from ml_pipeline.train.design_mode_alpha import (
     _classes,
     _row_flags,
@@ -106,6 +107,21 @@ def _lanxia_like_row() -> dict:
         "split_group_key": "g-lanxia",
         "bridge_key": "b-lanxia",
         "bridge_name": "岚下桥",
+    }
+
+
+def _off_band_uncommitted_row() -> dict:
+    # Mean 0.545 is outside ±0.03, but R=0.51 is not clearly back → uncommitted.
+    return {
+        "span_m": 16.0,
+        "three_miao_rise_span_ratio": 0.19,
+        "design_target_alpha": 0.545,
+        "observed_alpha_left": 0.58,
+        "observed_alpha_right": 0.51,
+        "sample_key": "off-band-uncommitted",
+        "split_group_key": "g-off-band",
+        "bridge_key": "b-off-band",
+        "bridge_name": "off-band-uncommitted",
     }
 
 
@@ -265,14 +281,16 @@ class DesignModeAlphaTests(unittest.TestCase):
             abs(float(forced_back[0]) - 0.503),
         )
         self.assertGreaterEqual(float(forced_back[0]), 0.5)
+        self.assertLess(abs(float(uncommitted[0]) - 0.5), 0.03)
 
-        v6_like = predict_design_mode_model(
+        ignored_v6 = predict_design_mode_model(
             model,
             [yuanji],
             [UNCOMMITTED_STRUCTURE_MODE],
-            ungated_fallback=np.asarray([0.503]),
+            ungated_fallback=np.asarray([0.622]),
         )
-        self.assertAlmostEqual(float(v6_like[0]), 0.503)
+        self.assertLess(abs(float(ignored_v6[0]) - 0.503), abs(0.622 - 0.503))
+        self.assertLess(abs(float(ignored_v6[0]) - 0.5), 0.03)
 
     def test_yonggui_like_back_half_is_lifted_off_bulk_shrinkage(self) -> None:
         yonggui = _yonggui_row()
@@ -335,6 +353,40 @@ class DesignModeAlphaTests(unittest.TestCase):
         self.assertAlmostEqual(missing, 0.597)
         self.assertEqual(BACK_HALF_HIGH_TAIL_ALPHA, 0.70)
         self.assertEqual(BACK_HALF_SHRINK_BAND, 0.02)
+
+    def test_yuanji_uncommitted_is_near_half_not_v6_bulk(self) -> None:
+        yuanji = _yuanji_row()
+        clear_back = _yonggui_row()
+        clear_front = _lanxia_like_row()
+        off_band = _off_band_uncommitted_row()
+        self.assertEqual(int(_classes([yuanji])[0]), -1)
+        self.assertEqual(int(_classes([clear_back])[0]), 1)
+        self.assertEqual(int(_classes([clear_front])[0]), 0)
+        self.assertEqual(int(_classes([off_band])[0]), -1)
+
+        model = fit_design_mode_model(_rows(), _median_specs())
+        model["experts"]["front_half"]["constant"] = 0.40
+        model["experts"]["back_half"]["constant"] = 0.80
+        predicted = predict_design_mode_model(
+            model,
+            [yuanji, clear_back, clear_front, off_band],
+            [
+                UNCOMMITTED_STRUCTURE_MODE,
+                "back_half",
+                "front_half",
+                UNCOMMITTED_STRUCTURE_MODE,
+            ],
+            ungated_fallback=np.asarray([0.622, 0.622, 0.622, 0.622]),
+        )
+        yuanji_hat, back_hat, front_hat, off_hat = (float(value) for value in predicted)
+
+        self.assertLess(abs(yuanji_hat - UNCOMMITTED_BAND_CENTER), 0.03)
+        self.assertLess(abs(yuanji_hat - 0.503), abs(0.622 - 0.503))
+        self.assertGreaterEqual(back_hat, 0.5)
+        self.assertNotAlmostEqual(back_hat, 0.5, places=2)
+        self.assertLess(front_hat, 0.5)
+        self.assertAlmostEqual(off_hat, 0.60, places=5)
+        self.assertGreater(abs(off_hat - 0.5), 0.05)
 
     def test_lanxia_like_stays_front_half_without_low_tail_mix(self) -> None:
         lanxia = _lanxia_like_row()

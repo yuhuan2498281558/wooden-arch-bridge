@@ -77,7 +77,7 @@ python -m ml_pipeline.train.structure_gated_alpha `
 
 ## v9 设计人员给定模式的条件双专家
 
-v9 不再把自动分类器作为主流程。在线合同仍要求设计人员预先选择 `front_half` 或 `back_half`。历史训练标签不再用均值 α 在 0.5 处一刀切：`STRUCTURE_BOUNDARY_BAND`（`AMBIGUITY_BAND`，±0.03）内的样本标为 `uncommitted`，不因均值 ≥0.5 就派给后半区专家。左右观测只有两侧都明显落在相反半区才记为结构分歧；远济式 0.506/0.500 跨 0.5 不算两种结构。贴边样本的派生评估使用未门控/v6 式连续预测（有 v6 基线时优先用 v6）。远侧行为不变：明显前半区仍是 `front_half`，明显后半区仍是 `back_half`。几何 0.5 只用于已提交半区的专家输出截断。学习器仍是 Ridge/v9 双专家。已提交后半区内，若专家相对训练中位数明显向下收缩（咏归 holdout 专家约 0.597、真值 0.748；α≥0.70 共 7 条），则与 2/3 规则取较高值；不另拟合高尾专家。北涧/田地专家输出落在 0.62–0.64 主体，保守混合不会把主体抬到 0.75。岚下前半区低尾（2026-08-25 重标 L/R 0.277/0.187、均值 0.232、净跨 15.8 m）是 103 条唯一最低点；v9 前半区专家约 0.427 相对中位数约 0.449 仍在主体，照搬咏归触发会把约 0.45 的前半区拖向 0.23，因此不混合、不删样本。
+v9 不再把自动分类器作为主流程。在线合同仍要求设计人员预先选择 `front_half` 或 `back_half`（现有字段也可传 `uncommitted`；默认仍是后半区）。历史训练标签不再用均值 α 在 0.5 处一刀切：`STRUCTURE_BOUNDARY_BAND`（±0.03）内为 `uncommitted`。贴边预测用夹在带内的训练中位数/0.5，**不用 v6**：本地 2026-08-25 复跑中远济门控已是 uncommitted，但 v6 把 0.503 预测成 0.622。带外未提交（该次 25−22=3）对两个半区专家做未截断插值。已提交后半区咏归式向下收缩与 2/3 取较高值；岚下前半区低尾不混合、不删样本。学习器仍是 Ridge/v9 双专家。产物保持 `research_designer_mode_not_for_deployment`。
 
 ```powershell
 python -m ml_pipeline.train.design_mode_alpha `
@@ -93,7 +93,7 @@ python -m ml_pipeline.train.design_mode_alpha `
 
 本地复跑冻结内部留出（云端 VM 通常没有 103 条 JSON 与 v6 产物）后，比较 `independent_holdout_predictions.csv` 的总体 MAE，以及：
 
-- 远济：`derived_design_mode` 应为 `uncommitted`，`predicted_alpha` 应接近 v6 连续值，而不是后半区专家 ~0.637。旧口径下该行绝对误差约 0.134。
+- 远济：`derived_design_mode` 应为 `uncommitted`，`predicted_alpha` 应接近 0.5（夹在 ±0.03 内），**不应**再是 v6 的 ~0.622。2026-08-25 本地目录 `five_miao_pilot_v9_boundary_high_tail_20260825` 曾报 0.622，复跑必须用**新的空输出目录**。
 - 咏归：`derived_design_mode` 应为 `back_half`，`predicted_alpha` 应高于修复前专家收缩值 ~0.597，并至少不差于固定规则 2/3≈0.667（真值均值 0.748）。主体后半区行不应被抬到 ~0.75。
 - 岚下：`derived_design_mode` 应为 `front_half`，`predicted_alpha` 仍应接近前半区专家/主体（约 0.43），不得被拉到 ~0.23；该样本保留。
 

@@ -172,6 +172,25 @@ class NodeModelTests(unittest.TestCase):
         self.assertGreater(front, 0.35)
         self.assertAlmostEqual(back, 0.65)
 
+    def test_design_mode_uncommitted_uses_band_center_not_back_expert(self) -> None:
+        artifact = _design_mode_artifact()
+        artifact["uncommitted_alpha"] = {
+            "method": "boundary_band_center_else_ungated_expert_mix",
+            "band_center": 0.5,
+            "band_alpha": 0.5,
+            "boundary_band": 0.03,
+            "band_rows": 22,
+            "off_band_uncommitted_rows": 3,
+        }
+        model = DesignModeAlphaModel(artifact)
+
+        uncommitted, metadata = model.predict({}, "uncommitted")
+        back, _ = model.predict({}, "back_half")
+
+        self.assertAlmostEqual(uncommitted, 0.5)
+        self.assertEqual(metadata["uncommitted_predictor"], "boundary_band_center")
+        self.assertGreater(abs(back - 0.5), 0.1)
+
     def test_design_mode_model_rejects_artifact_that_failed_gate(self) -> None:
         artifact = _design_mode_artifact()
         artifact["integration_gate_passed"] = False

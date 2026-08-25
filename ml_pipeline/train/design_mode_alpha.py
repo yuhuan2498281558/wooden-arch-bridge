@@ -23,6 +23,12 @@ from bridge_algorithm_service.front_half_low_tail import (
     front_half_low_tail_record,
     mix_front_half_low_tail_values,
 )
+from bridge_algorithm_service.uncommitted_alpha import (
+    UNCOMMITTED_BAND_CENTER,
+    row_uses_uncommitted_band_predictor,
+    uncommitted_alpha_record,
+    uncommitted_band_prediction,
+)
 from ml_pipeline.prepare.symmetric_targets import collect_annotation_paths
 from ml_pipeline.train.feature_ablation import FEATURE_SETS
 from ml_pipeline.train.model_improvement import load_frozen_partition
@@ -155,10 +161,35 @@ def _predict_expert(expert: dict[str, Any], rows: list[dict[str, Any]]) -> np.nd
 
 
 def _ungated_expert_mix(model: dict[str, Any], rows: list[dict[str, Any]]) -> np.ndarray:
-    """Boundary-band prediction: interpolate the two half-experts without a 0.5 clip."""
+    """Off-band uncommitted: interpolate the two half-experts without a 0.5 clip.
+
+    Do not use this for the |α-0.5|≤0.03 band — v6 and the expert average both
+    sit near the 0.62/0.43 bulk. Band rows use ``uncommitted_band_prediction``.
+    """
     front = _predict_expert(model["experts"]["front_half"], rows)
+    front, _ = mix_front_half_low_tail_values(front, model.get("front_half_low_tail"))
     back = _predict_expert(model["experts"]["back_half"], rows)
+    back, _ = mix_back_half_high_tail_values(back, model.get("back_half_high_tail"))
     return 0.5 * (front + back)
+
+
+def _uncommitted_predictions(
+    model: dict[str, Any],
+    rows: list[dict[str, Any]],
+) -> np.ndarray:
+    """Band center for |α-0.5|≤0.03; otherwise ungated half-expert mix. Never v6."""
+    predictions = np.empty(len(rows), dtype=float)
+    band_alpha = uncommitted_band_prediction(model.get("uncommitted_alpha"))
+    band_mask = np.asarray(
+        [row_uses_uncommitted_band_predictor(row) for row in rows],
+        dtype=bool,
+    )
+    predictions[band_mask] = band_alpha
+    off_band = np.flatnonzero(~band_mask)
+    if len(off_band):
+        off_rows = [rows[index] for index in off_band]
+        predictions[off_band] = _ungated_expert_mix(model, off_rows)
+    return predictions
 
 
 def clip_to_design_mode(values: np.ndarray, classes: np.ndarray) -> np.ndarray:
@@ -214,6 +245,15 @@ def fit_design_mode_model(
         experts[mode_name] = _fit_expert(mode_rows, selected_specs[mode_name])
     front_targets = _target(mode_rows_by_name["front_half"])
     back_targets = _target(mode_rows_by_name["back_half"])
+    uncommitted_rows = [row for index, row in enumerate(rows) if classes[index] < 0]
+    band_rows = [
+        row for row in uncommitted_rows if row_uses_uncommitted_band_predictor(row)
+    ]
+    band_median = (
+        float(np.median(_target(band_rows)))
+        if band_rows
+        else float(UNCOMMITTED_BAND_CENTER)
+    )
     return {
         "experts": experts,
         "structure_threshold": STRUCTURE_THRESHOLD,
@@ -227,6 +267,11 @@ def fit_design_mode_model(
             float(np.median(front_targets)),
             int(np.sum(front_targets < FRONT_HALF_LOW_TAIL_ALPHA)),
         ),
+        "uncommitted_alpha": uncommitted_alpha_record(
+            band_median,
+            len(band_rows),
+            len(uncommitted_rows) - len(band_rows),
+        ),
     }
 
 
@@ -237,6 +282,14 @@ def predict_design_mode_model(
     *,
     ungated_fallback: np.ndarray | None = None,
 ) -> np.ndarray:
+    """Predict committed halves with v9 experts; uncommitted never uses v6.
+
+    ``ungated_fallback`` is ignored. It used to inject v6 for uncommitted
+    rows; that predicted ~0.622 for 远济 (true 0.503). Band rows now use
+    the clamped band median / 0.5; off-band uncommitted rows interpolate
+    the two half-experts without a 0.5 clip.
+    """
+    del ungated_fallback
     classes = _normalize_modes(modes, len(rows))
     predictions = np.zeros(len(rows), dtype=float)
     for class_index, mode_name in enumerate(MODE_NAMES):
@@ -258,14 +311,8 @@ def predict_design_mode_model(
             predictions[selected] = raw
     uncommitted = np.flatnonzero(classes < 0)
     if len(uncommitted):
-        if ungated_fallback is not None:
-            fallback = np.asarray(ungated_fallback, dtype=float)
-            if len(fallback) != len(rows):
-                raise ValueError("ungated fallback must align with rows")
-            predictions[uncommitted] = fallback[uncommitted]
-        else:
-            uncommitted_rows = [rows[index] for index in uncommitted]
-            predictions[uncommitted] = _ungated_expert_mix(model, uncommitted_rows)
+        uncommitted_rows = [rows[index] for index in uncommitted]
+        predictions[uncommitted] = _uncommitted_predictions(model, uncommitted_rows)
     return clip_to_design_mode(predictions, classes)
 
 
@@ -696,7 +743,7 @@ def _report(
         "## 研究口径",
         "",
         f"- 历史前/后半区只在两侧都明显离开 0.5±{STRUCTURE_BOUNDARY_BAND:g} 时派生；贴边样本标为 uncommitted，不因均值 ≥0.5 就切到后半区。依据：远济 holdout 均值 0.503（左右 0.506/0.500）及 22/103 条 |α-0.5|≤{STRUCTURE_BOUNDARY_BAND:g}。",
-        "- 在线使用前提仍是设计人员预先给定结构模式；本实验不运行自动分类器。贴边样本的派生评估走连续/v6 式预测，不把 Ridge 专家换成别的学习器。",
+        "- 在线使用前提仍是设计人员预先给定结构模式；本实验不运行自动分类器。未提交贴边样本不再走 v6 主体连续预测（远济 0.503 曾被预测成 0.622）；边界带用夹在 ±0.03 内的训练中位数/0.5，带外未提交样本对两个半区专家做未截断插值。不把 Ridge 专家换成别的学习器。",
         "- 已提交后半区内：若专家相对训练中位数明显向下收缩（咏归式 ~0.597 vs 中位数 ~0.622），则与 2/3 规则取较高值。α≥0.70 仅 7 条，不够拟合第二套专家；北涧/田地专家输出落在 0.62–0.64 主体内，保守混合不会把它们抬到 0.75。",
         "- 前半区岚下（2026-08-25 重标 L/R 0.277/0.187、均值 0.232、净跨 15.8 m）是 103 条中唯一最低点；v9 前半区专家约 0.427，相对中位数约 0.449 仍落在主体。照搬咏归 0.02 触发会把约 0.45 的前半区主体拖向 0.23，故不混合、不删样本、不换 Ridge。",
         f"- 共 {distribution['rows']} 条：前半区 {distribution['front_half_rows']} 条，后半区 {distribution['back_half_rows']} 条，未提交 {distribution['uncommitted_rows']} 条。",
@@ -922,11 +969,12 @@ def run_design_mode_alpha(
             "holdout_used_for_selection": False,
             "historical_mode_source": (
                 f"committed halves require both sides clearly off 0.5±{STRUCTURE_BOUNDARY_BAND:g}; "
-                "uncommitted samples keep ungated/v6-style prediction"
+                "uncommitted band rows use clamped band median / 0.5, not v6"
             ),
             "deployment_contract": "designer supplies front_half/back_half before prediction",
             "back_half_high_tail": full_model.get("back_half_high_tail"),
             "front_half_low_tail": full_model.get("front_half_low_tail"),
+            "uncommitted_alpha": full_model.get("uncommitted_alpha"),
         },
         "integration_gate_passed": gate_passed,
         "integration_gate_reasons": gate_reasons,
