@@ -128,7 +128,7 @@ python -m ml_pipeline.train.design_mode_alpha `
   --baseline-dir <v6结果目录>
 ```
 
-v9 不新增人工重标，历史类型按 `design_target_alpha=0.5` 派生；在线由设计人员显式选择 `front_half/back_half`。开发集 81 条中前半区 28 条、后半区 53 条，条件双专家桥级宏 MAE `0.05296`、模式宏 MAE `0.05163`、q90 `0.10638`；内部留出桥级宏 MAE `0.06045`。相对分区中位数的改善较小，且排除边界或左右跨区样本后未稳定达到 `0.002` 门槛，因此产物状态保持 `research_designer_mode_not_for_deployment`，只允许受控 Pilot 使用。
+v9 不新增人工重标。自动派生标签使用 `STRUCTURE_BOUNDARY_BAND`（±0.03）：两侧都明显离开 0.5 才提交 `front_half`/`back_half`，贴边（含远济均值 0.503、左右 0.506/0.500）为 `uncommitted`，评估时走 v6 连续预测。在线仍由设计人员显式选择 `front_half/back_half`。几何 0.5 只截断已提交半区的专家输出。开发集 81 条中前半区 28 条、后半区 53 条（旧 0.5 切分口径），条件双专家桥级宏 MAE `0.05296`、模式宏 MAE `0.05163`、q90 `0.10638`；内部留出桥级宏 MAE `0.06045`。相对分区中位数的改善较小，且排除边界或左右跨区样本后未稳定达到 `0.002` 门槛，因此产物状态保持 `research_designer_mode_not_for_deployment`，只允许受控 Pilot 使用。云端无标注 JSON 时无法重算留出；本地用上面命令复跑后看 `independent_holdout_predictions.csv` 远济行。本轮不改咏归高尾、岚下低尾，也不换 Ridge 学习器。
 
 v10 显式模式部分共享实验使用 `ml_pipeline.train.partial_pooling_alpha`：冻结 v5 分区，比较分区中位数、共享跨径斜率、受惩罚的模式斜率差和 v9 独立专家。开发集 LOGO 的模式宏 MAE 分别为 `0.05459/0.05166/0.05166/0.05163`，q90 分别为 `0.11002/0.10135/0.10146/0.10638`。部分共享模型选择 `shared_penalty=10`、`interaction_penalty=1000`，表明现有样本不支持稳定的模式特异斜率；按容差优先选择更简单的共享斜率 M1，但未达到相对 v9 的 `0.002` 替换门槛。历史留出 M1 模式宏 MAE 为 `0.05929`，因该留出已反复查看，仅作描述。v10 不生成部署产物，线上 v9 和 beta 均保持不变。
 

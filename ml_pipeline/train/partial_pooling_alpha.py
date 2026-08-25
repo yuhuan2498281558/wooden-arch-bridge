@@ -65,7 +65,9 @@ def _joint_design(
     z_span = (_span(rows) - span_mean) / span_scale
     # Symmetric contrast coding makes the third coefficient the common slope
     # and the fourth coefficient the front/back slope difference.
-    mode_contrast = np.asarray(classes, dtype=float) - 0.5
+    # Uncommitted (class=-1) sit at contrast 0: interpolating, no half assignment.
+    mode_codes = np.asarray(classes, dtype=float)
+    mode_contrast = np.where(mode_codes < 0, 0.0, mode_codes - 0.5)
     columns = [np.ones(len(rows)), mode_contrast, z_span]
     if interaction:
         columns.append(mode_contrast * z_span)
@@ -79,7 +81,8 @@ def fit_joint_model(
     if len(rows) < 4:
         raise ValueError("joint model requires at least four training rows")
     classes = _classes(rows)
-    if set(classes.tolist()) != {0, 1}:
+    committed = classes[classes >= 0]
+    if set(committed.tolist()) != {0, 1}:
         raise ValueError("joint model requires both design modes")
     span_values = _span(rows)
     span_mean = float(np.mean(span_values))
@@ -211,6 +214,8 @@ def _screen_joint_candidate(
     mode_scores = []
     for mode_index in range(2):
         selected = classes == mode_index
+        if not np.any(selected):
+            return {**spec, "valid": False, "failure": "missing_committed_mode"}
         mode_scores.append(
             group_macro_mae(
                 observed[selected], predictions[selected], bridge_keys[selected]

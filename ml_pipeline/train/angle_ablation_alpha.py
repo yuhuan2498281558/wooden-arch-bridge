@@ -89,7 +89,8 @@ def _design_matrix(
 ) -> np.ndarray:
     values = _feature_matrix(rows, feature_names)
     standardized = (values - feature_means) / feature_scales
-    mode_contrast = np.asarray(classes, dtype=float) - 0.5
+    mode_codes = np.asarray(classes, dtype=float)
+    mode_contrast = np.where(mode_codes < 0, 0.0, mode_codes - 0.5)
     return np.column_stack(
         [np.ones(len(rows)), mode_contrast, standardized]
     )
@@ -103,7 +104,8 @@ def fit_shared_feature_model(
     feature_names = tuple(spec["feature_names"])
     values = _feature_matrix(rows, feature_names)
     classes = _classes(rows)
-    if set(classes.tolist()) != {0, 1}:
+    committed = classes[classes >= 0]
+    if set(committed.tolist()) != {0, 1}:
         raise ValueError("shared-feature model requires both design modes")
     means = np.mean(values, axis=0)
     scales = np.std(values, axis=0)
@@ -206,6 +208,8 @@ def _screen_candidate(
     mode_scores = []
     for mode_index in range(2):
         selected = classes == mode_index
+        if not np.any(selected):
+            return {**spec, "valid": False, "failure": "missing_committed_mode"}
         mode_scores.append(
             group_macro_mae(
                 observed[selected], prediction[selected], bridge_keys[selected]

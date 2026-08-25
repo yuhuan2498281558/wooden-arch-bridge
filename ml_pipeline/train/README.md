@@ -77,7 +77,7 @@ python -m ml_pipeline.train.structure_gated_alpha `
 
 ## v9 设计人员给定模式的条件双专家
 
-v9 不再把自动分类器作为主流程。历史训练记录仍按 `design_target_alpha<0.5` 与 `>=0.5` 派生前、后半区，但在线合同要求设计人员在预测前明确选择 `front_half` 或 `back_half`。因此论文口径是“设计模式给定条件下的分区预测”，不是自动结构识别，也不是独立专家构造标签。
+v9 不再把自动分类器作为主流程。在线合同仍要求设计人员预先选择 `front_half` 或 `back_half`。历史训练标签不再用均值 α 在 0.5 处一刀切：`STRUCTURE_BOUNDARY_BAND`（`AMBIGUITY_BAND`，±0.03）内的样本标为 `uncommitted`，不因均值 ≥0.5 就派给后半区专家。左右观测只有两侧都明显落在相反半区才记为结构分歧；远济式 0.506/0.500 跨 0.5 不算两种结构。贴边样本的派生评估使用未门控/v6 式连续预测（有 v6 基线时优先用 v6）。远侧行为不变：明显前半区仍是 `front_half`，明显后半区仍是 `back_half`。几何 0.5 只用于已提交半区的专家输出截断。学习器仍是 Ridge/v9 双专家，本轮不做咏归高尾或岚下低尾专家。
 
 ```powershell
 python -m ml_pipeline.train.design_mode_alpha `
@@ -87,9 +87,11 @@ python -m ml_pipeline.train.design_mode_alpha `
   --baseline-dir <v6结果目录>
 ```
 
-开发集先在每个半区内分别比较分区中位数、Ridge 和 Huber，再以 `split_group_key` LOGO 生成条件预测。对照包括固定规则、原始 v6 单模型、按所选半区截断的 v6，以及仅使用类型先验的分区训练中位数；同时报告前后半区等权宏 MAE，避免样本不平衡掩盖较弱类别。另对 `alpha=0.5±0.03` 边界记录和左右观测跨区记录做排除敏感性分析。
+开发集先在每个**已提交**半区内分别比较分区中位数、Ridge 和 Huber，再以 `split_group_key` LOGO 生成条件预测。对照包括固定规则、原始 v6 单模型、按已提交半区截断的 v6，以及仅使用类型先验的分区训练中位数；同时报告前后半区等权宏 MAE。另对边界带记录和真正左右跨区记录做排除敏感性分析。
 
 只有条件双专家在开发集上相对最强对照的模式宏 MAE和总体桥级宏 MAE均至少改善 `0.002`、总体 q90 不恶化超过 `0.005`，且前后半区各自的 MAE/q90 均不明显劣于各自最强对照，才进入系统接入评审。冻结内部留出不参与选择，且因已在多轮研究中查看，不得称为全新外部验证。
+
+本地复跑冻结内部留出（云端 VM 通常没有 103 条 JSON 与 v6 产物）后，比较 `independent_holdout_predictions.csv` 的总体 MAE 与远济行 `derived_design_mode` / `predicted_alpha` / `v6_single_model_predicted_alpha`。修复前远济被标 `back_half` 且专家约 0.637（相对真值 0.503 的绝对误差约 0.134）；修复后该行应为 `uncommitted`，预测走 v6 连续值而不是后半区专家。
 
 ## v10 显式模式部分共享回归
 
